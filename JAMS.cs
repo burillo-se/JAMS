@@ -14,6 +14,7 @@ const int STEP_DOOR_CLOSE = 3;
 
 public struct Airlock_State {
 	public TimeSpan timestamp;
+	public TimeSpan op_start;
 	public int step_id;
 	public int group_idx;
 	public int sensor_idx;
@@ -227,16 +228,14 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	// close and disable all doors
 	if (!ag.doors[0].Enabled)
 		ag.doors[0].ApplyAction("OnOff_On");
-	if (ag.doors[0].Open)
+	if (ag.doors[0].Open) {
 		ag.doors[0].ApplyAction("Open");
-	else
-		ag.doors[0].ApplyAction("OnOff_Off");
+	}
 	if (!ag.doors[1].Enabled)
 		ag.doors[1].ApplyAction("OnOff_On");
-	if (ag.doors[1].Open)
+	if (ag.doors[1].Open) {
 		ag.doors[1].ApplyAction("Open");
-	else
-		ag.doors[1].ApplyAction("OnOff_Off");
+	}
 	
 	return ag;
 }
@@ -265,6 +264,7 @@ bool s_checkSensors() {
 				var state = new Airlock_State();
 				state.group_idx = i;
 				state.timestamp = runtime;
+				state.op_start = runtime;
 				state.step_id = 0;
 				state.sensor_idx = s_idx;
 				
@@ -325,7 +325,7 @@ bool s_engageAirlock() {
 		var ag = airlock_groups[state.group_idx];
 		
 		// timeout
-		if ((runtime - state.timestamp).Seconds > 10) {
+		if ((runtime - state.timestamp).Seconds > 10 || (runtime - state.op_start).Seconds > 10) {
 			death_row.Add(i);
 			continue;
 		}
@@ -363,6 +363,7 @@ bool s_engageAirlock() {
 				if (!door.Open)
 					door.ApplyAction("Open");
 				state.timestamp = runtime;
+				state.op_start = runtime;
 				state.step_id = STEP_DOOR_IN;
 			}
 		}
@@ -397,7 +398,8 @@ bool s_engageAirlock() {
 				if (door.Open) {
 					door.ApplyAction("Open");
 					state.timestamp = runtime;
-				} 
+					state.op_start = runtime;
+				}
 				// if it was an outer door, pressurize
 				if (state.sensor_idx == ag.outer_sensor_idx) {
 					if (!isPressurizing(ag.vent)) {
@@ -416,11 +418,7 @@ bool s_engageAirlock() {
 		if (state.step_id == STEP_DOOR_OUT) {
 			// wait until the room is fully pressurized/depressurized
 			if (state.sensor_idx == ag.outer_sensor_idx) {
-				if (getPressure(ag.vent) == 0) {
-					// lock previous door
-					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
-					ag.doors[prev_door].ApplyAction("OnOff_Off");
-					
+				if (getPressure(ag.vent) == 0) {					
 					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 					var door = ag.doors[door_idx];
 					// open the outer door
@@ -428,14 +426,11 @@ bool s_engageAirlock() {
 					if (!door.Open)
 						door.ApplyAction("Open");
 					state.timestamp = runtime;
+					state.op_start = runtime;
 					state.step_id = STEP_DOOR_CLOSE;
 				}
 			} else {
 				if (getPressure(ag.vent) == 100) {
-					// lock previous door
-					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
-					ag.doors[prev_door].ApplyAction("OnOff_Off");
-					
 					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 					var door = ag.doors[door_idx];
 					// open the inner door
@@ -443,6 +438,7 @@ bool s_engageAirlock() {
 					if (!door.Open)
 						door.ApplyAction("Open");
 					state.timestamp = runtime;
+					state.op_start = runtime;
 					state.step_id = STEP_DOOR_CLOSE;
 				}
 			}
@@ -473,14 +469,14 @@ bool s_engageAirlock() {
 	for (int i = death_row.Count - 1; i >= 0; i--) {
 		var state = airlock_states[i];
 		var ag = airlock_groups[state.group_idx];
-		if (ag.doors[0].Open)
+		if (ag.doors[0].Open) {
+			ag.doors[0].ApplyAction("OnOff_On");
 			ag.doors[0].ApplyAction("Open");
-		else
-			ag.doors[0].ApplyAction("OnOff_Off");
-		if (ag.doors[1].Open)
+		}
+		if (ag.doors[1].Open) {
+			ag.doors[0].ApplyAction("OnOff_On");
 			ag.doors[1].ApplyAction("Open");
-		else
-			ag.doors[1].ApplyAction("OnOff_Off");
+		}
 		if (!isDepressurizing(ag.vent)) {
 			togglePressurize(ag.vent);
 		}
