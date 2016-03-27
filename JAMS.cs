@@ -232,11 +232,15 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 		ag.doors[0].ApplyAction("OnOff_On");
 	if (ag.doors[0].Open) {
 		ag.doors[0].ApplyAction("Open");
+	} else {
+		ag.doors[0].ApplyAction("OnOff_Off");
 	}
 	if (!ag.doors[1].Enabled)
 		ag.doors[1].ApplyAction("OnOff_On");
 	if (ag.doors[1].Open) {
 		ag.doors[1].ApplyAction("Open");
+	} else {
+		ag.doors[1].ApplyAction("OnOff_Off");
 	}
 	
 	return ag;
@@ -425,9 +429,12 @@ bool s_engageAirlock() {
 		if (state.step_id == STEP_DOOR_OUT) {
 			// wait until the room is fully pressurized/depressurized
 			if (state.sensor_idx == ag.outer_sensor_idx) {
-				if (getPressure(ag.vent) == 0) {					
 				if (getPressure(ag.vent) == 0 ||
 						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {	
+					// lock previous door
+					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
+					ag.doors[prev_door].ApplyAction("OnOff_Off");
+									
 					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 					var door = ag.doors[door_idx];
 					// open the outer door
@@ -440,9 +447,12 @@ bool s_engageAirlock() {
 				}
 				ag.last_pressure = getPressure(ag.vent);
 			} else {
-				if (getPressure(ag.vent) == 100) {
 				if (getPressure(ag.vent) == 100 ||
 						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {
+					// lock previous door
+					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
+					ag.doors[prev_door].ApplyAction("OnOff_Off");
+					
 					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 					var door = ag.doors[door_idx];
 					// open the inner door
@@ -485,10 +495,14 @@ bool s_engageAirlock() {
 		if (ag.doors[0].Open) {
 			ag.doors[0].ApplyAction("OnOff_On");
 			ag.doors[0].ApplyAction("Open");
+		} else {
+			ag.doors[0].ApplyAction("OnOff_Off");
 		}
 		if (ag.doors[1].Open) {
-			ag.doors[0].ApplyAction("OnOff_On");
+			ag.doors[1].ApplyAction("OnOff_On");
 			ag.doors[1].ApplyAction("Open");
+		} else {
+			ag.doors[1].ApplyAction("OnOff_Off");
 		}
 		if (!isDepressurizing(ag.vent)) {
 			togglePressurize(ag.vent);
