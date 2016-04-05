@@ -33,7 +33,7 @@ public struct Airlock_Group {
 
 public List<Airlock_State> airlock_states = null;
 
-List<Airlock_Group> airlock_groups = null;
+public List<Airlock_Group> airlock_groups = null;
 
 // state machine
 Func < bool > [] states = null;
@@ -83,7 +83,7 @@ void updateGroups() {
 	}
 	string[] group_strs = Storage.Split(';');
 	var skipList = new List<int>();
-	
+
 	for (int g = airlock_groups.Count - 1; g >= 0; g--) {
 		var ag = airlock_groups[g];
 		for (int i = group_strs.Length - 1; i >= 0; i--) {
@@ -98,7 +98,7 @@ void updateGroups() {
 			string sensor1_id = strs[3];
 			string sensor2_id = strs[4];
 			int outer_idx = Convert.ToInt32(strs[5]);
-			
+
 			if (getBlockID(ag.vent.ToString()) != vent_id) {
 				continue;
 			}
@@ -114,36 +114,47 @@ void updateGroups() {
 			if (getBlockID(ag.sensors[1].ToString()) != sensor2_id) {
 				continue;
 			}
-			ag.outer_sensor_idx = outer_idx;
-			
+			if (outer_idx != -1)
+				ag.outer_sensor_idx = outer_idx;
+
 			skipList.Add(i);
-			
+
 			airlock_groups[g] = ag;
 		}
 	}
-	
+
 }
 
-void togglePressurize(IMyAirVent av) {
-	av.ApplyAction("Depressurize");
+void pressurize(IMyAirVent av) {
+	av.ApplyAction("Depressurize_Off");
+	av.ApplyAction("Depressurize_On");
+	av.ApplyAction("Depressurize_Off");
 }
 
-bool isPressurizing(IMyAirVent av) {
-	StringBuilder builder = new StringBuilder();
-	av.GetActionWithName("Depressurize").WriteValue(av, builder);
-	if (builder.ToString() == "Off") {
-		return true;
+void depressurize(IMyAirVent av) {
+	av.ApplyAction("Depressurize_On");
+	av.ApplyAction("Depressurize_Off");
+	av.ApplyAction("Depressurize_On");
+}
+
+void open(IMyDoor door) {
+	door.ApplyAction("OnOff_On");
+	door.ApplyAction("Open_On");
+	door.ApplyAction("Open_Off");
+	door.ApplyAction("Open_On");
+}
+
+void close(IMyDoor door) {
+	door.ApplyAction("OnOff_On");
+	door.ApplyAction("Open_Off");
+	door.ApplyAction("Open_On");
+	door.ApplyAction("Open_Off");
+}
+
+void tryLock(IMyDoor door) {
+	if (door.OpenRatio == 0) {
+		door.ApplyAction("OnOff_Off");
 	}
-	return false;
-}
-
-bool isDepressurizing(IMyAirVent av) {
-	StringBuilder builder = new StringBuilder();
-	av.GetActionWithName("Depressurize").WriteValue(av, builder);
-	if (builder.ToString() == "On") {
-		return true;
-	}
-	return false;
 }
 
 int getPressure(IMyAirVent av) {
@@ -151,14 +162,14 @@ int getPressure(IMyAirVent av) {
 	var p_match = p_regex.Match(av.DetailedInfo);
 	var np_regex = new System.Text.RegularExpressions.Regex("Room pressure: (\\w+)");
 	var np_match = np_regex.Match(av.DetailedInfo);
-	
+
 	if (!p_match.Success && !np_match.Success) {
 		throw new Exception("Fail");
 	}
 	if (np_match.Groups[1].Value == "Not") {
 		return -1;
 	}
-	
+
 	Decimal p = new Decimal();
 	bool result = Decimal.TryParse(p_match.Groups[1].Value, out p);
 	if (!result) {
@@ -178,7 +189,7 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	ag.lights = new List<IMyLightingBlock>();
 	ag.vent = null;
 	ag.name = group.Name;
-	
+
 	// we need find two doors and two sensors
 	for (int i = 0; i < blocks.Count; i++) {
 		var block = blocks[i];
@@ -212,7 +223,7 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 		Echo("No air vent found");
 		return null;
 	}
-	
+
 	// figure out which sensor likely belongs to which door
 	int min_idx = -1;
 	double min_dist = 0;
@@ -226,31 +237,23 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	}
 	ag.sensor_to_door_idx[min_idx] = 0;
 	ag.sensor_to_door_idx[(min_idx + 1) % 2] = 1;
-	
+
 	// close and disable all doors
-	if (!ag.doors[0].Enabled)
-		ag.doors[0].ApplyAction("OnOff_On");
-	if (ag.doors[0].Open) {
-		ag.doors[0].ApplyAction("Open");
-	} else {
-		ag.doors[0].ApplyAction("OnOff_Off");
-	}
-	if (!ag.doors[1].Enabled)
-		ag.doors[1].ApplyAction("OnOff_On");
-	if (ag.doors[1].Open) {
-		ag.doors[1].ApplyAction("Open");
-	} else {
-		ag.doors[1].ApplyAction("OnOff_Off");
-	}
-	
+	close(ag.doors[0]);
+	close(ag.doors[1]);
+	tryLock(ag.doors[0]);
+	tryLock(ag.doors[1]);
+	depressurize(ag.vent);
+
 	return ag;
 }
 
 
 bool s_checkSensors() {
+	bool result = true;
 	for (int i = 0; i < airlock_groups.Count; i++) {
 		var ag = airlock_groups[i];
-		
+
 		// skip active airlocks
 		bool active = false;
 		for (int j = 0; j < airlock_states.Count; j++) {
@@ -260,9 +263,10 @@ bool s_checkSensors() {
 			}
 		}
 		if (active) {
+			result = false;
 			continue;
 		}
-		
+
 		for (int s_idx = 0; s_idx < ag.sensors.Count; s_idx++) {
 			var sensor = ag.sensors[s_idx];
 			if (sensor.IsActive) {
@@ -273,12 +277,13 @@ bool s_checkSensors() {
 				state.op_start = runtime;
 				state.step_id = 0;
 				state.sensor_idx = s_idx;
-				
+
 				airlock_states.Add(state);
+				break;
 			}
 		}
 	}
-	return false;
+	return result;
 }
 
 bool s_refreshState() {
@@ -297,11 +302,6 @@ bool s_refreshState() {
 		var group = groups[i];
 		// skip groups we don't want
 		if (!group.Name.StartsWith("JAMS")) {
-			continue;
-		}
-		// if we already have this group, just add it to the list
-		if (prev_groups.Contains(group.Name)) {
-			new_groups.Add(group.Name);
 			continue;
 		}
 		Airlock_Group ? ag = parseGroup(group);
@@ -329,159 +329,137 @@ bool s_engageAirlock() {
 	for (int i = 0; i < airlock_states.Count; i++) {
 		var state = airlock_states[i];
 		var ag = airlock_groups[state.group_idx];
-		
+
 		// timeout
 		if ((runtime - state.timestamp).Seconds > 10 || (runtime - state.op_start).Seconds > 10) {
 			death_row.Add(i);
 			continue;
 		}
-		
+
 		// decide what to do
 		if (state.step_id == STEP_INIT) {
 			bool ready = false;
-			// if we have triggered an outer door, depressurize
+
+			bool pressureSet = false;
+
 			if (state.sensor_idx == ag.outer_sensor_idx || ag.outer_sensor_idx == -1) {
-				if (!isDepressurizing(ag.vent)) {
-					togglePressurize(ag.vent);
+				depressurize(ag.vent);
+
+				if (getPressure(ag.vent) == 0) {
+					pressureSet = true;
 				}
-				
-				// if the vent is already depressurizing, wait until it's fully
-				// depressurized, or just go to next stage if it's stuck
-				if (getPressure(ag.vent) == 0 ||
-						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {
-					ready = true;
-				}
-				ag.last_pressure = getPressure(ag.vent);
 			} else {
-				if (!isPressurizing(ag.vent)) {
-					togglePressurize(ag.vent);
+				pressurize(ag.vent);
+
+				if (getPressure(ag.vent) == 100) {
+					pressureSet = true;
 				}
-				
-				// if the vent is already pressurizing, wait until it's fully
-				// pressurized
-				if (getPressure(ag.vent) == 100 ||
-						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {
-					ready = true;
-				}
-				ag.last_pressure = getPressure(ag.vent);
 			}
+
+			// if the vent is already (de)pressurizing, wait until it's fully
+			// (de)pressurized, or just go to next stage if it's stuck
+			if (pressureSet ||
+					((runtime - state.op_start).Seconds > 5 && getPressure(ag.vent) == ag.last_pressure)) {
+				ready = true;
+			}
+			ag.last_pressure = getPressure(ag.vent);
+
 			// if we're ready, open the door and proceed to next state
 			if (ready) {
 				var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 				var door = ag.doors[door_idx];
-				if (!door.Enabled)
-					door.ApplyAction("OnOff_On");
-				if (!door.Open)
-					door.ApplyAction("Open");
+				// make sure we do open the door
+				open(door);
 				state.timestamp = runtime;
 				state.op_start = runtime;
+				ag.last_pressure = -1;
 				state.step_id = STEP_DOOR_IN;
 			}
 		}
-		
+
 		if (state.step_id == STEP_DOOR_IN) {
 			// wait 1 second after sensor stops being active, then close the
 			// door and start pressurizing/depressurizing
-			
+
 			var sensor = ag.sensors[state.sensor_idx];
-			
+			var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
+			var door = ag.doors[door_idx];
+
 			// if sensor is still active, update the timestamp
-			if (sensor.IsActive) {
+			if (door.OpenRatio != 0 && sensor.IsActive) {
 				state.timestamp = runtime;
 			}
-			
+
 			var diff = runtime - state.timestamp;
 			if (diff.Seconds > 1) {
-			
+
+				// if vent is depressurized, it's outer door
 				if (ag.outer_sensor_idx == -1) {
-					// if vent is depressurized, it's outer door
 					if (!ag.vent.IsPressurized()) {
 						ag.outer_sensor_idx = state.sensor_idx;
 					} else {
 						ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
 					}
 				}
-				
-				var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-				var door = ag.doors[door_idx];
-				
+
 				// close the door
-				if (door.Open) {
-					door.ApplyAction("Open");
+				if (door.OpenRatio != 0 && (runtime - state.op_start).Seconds < 6) {
+					close(door);
+				} else {
+					close(door);
+					tryLock(door);
+
+					// if it was an outer door, pressurize
+					if (state.sensor_idx == ag.outer_sensor_idx) {
+						pressurize(ag.vent);
+					} else {
+						depressurize(ag.vent);
+					}
+					// update sensor id
+					ag.last_pressure = -1;
 					state.timestamp = runtime;
 					state.op_start = runtime;
+					state.sensor_idx = (state.sensor_idx + 1) % 2;
+					state.step_id = STEP_DOOR_OUT;
 				}
-				// if it was an outer door, pressurize
-				if (state.sensor_idx == ag.outer_sensor_idx) {
-					if (!isPressurizing(ag.vent)) {
-						togglePressurize(ag.vent);
-					}
-				} else {
-					if (!isDepressurizing(ag.vent)) {
-						togglePressurize(ag.vent);
-					}
-				}
-				// update sensor id
-				state.sensor_idx = (state.sensor_idx + 1) % 2;
-				state.step_id = STEP_DOOR_OUT;
 			}
 		}
 		if (state.step_id == STEP_DOOR_OUT) {
 			// wait until the room is fully pressurized/depressurized
-			if (state.sensor_idx == ag.outer_sensor_idx) {
-				if (getPressure(ag.vent) == 0 ||
-						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {	
-					// lock previous door
-					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
-					ag.doors[prev_door].ApplyAction("OnOff_Off");
-									
-					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-					var door = ag.doors[door_idx];
-					// open the outer door
-					door.ApplyAction("OnOff_On");
-					if (!door.Open)
-						door.ApplyAction("Open");
-					state.timestamp = runtime;
-					state.op_start = runtime;
-					state.step_id = STEP_DOOR_CLOSE;
-				}
-				ag.last_pressure = getPressure(ag.vent);
-			} else {
-				if (getPressure(ag.vent) == 100 ||
-						((runtime - state.op_start).Seconds > 3 && getPressure(ag.vent) == ag.last_pressure)) {
-					// lock previous door
-					var prev_door = ag.sensor_to_door_idx[(state.sensor_idx + 1) % 2];
-					ag.doors[prev_door].ApplyAction("OnOff_Off");
-					
-					var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-					var door = ag.doors[door_idx];
-					// open the inner door
-					door.ApplyAction("OnOff_On");
-					if (!door.Open)
-						door.ApplyAction("Open");
-					state.timestamp = runtime;
-					state.op_start = runtime;
-					state.step_id = STEP_DOOR_CLOSE;
-				}
-				ag.last_pressure = getPressure(ag.vent);
+			bool pressureSet = false;
+			if (state.sensor_idx == ag.outer_sensor_idx && getPressure(ag.vent) == 0) {
+				pressureSet = true;
+			} else if (state.sensor_idx != ag.outer_sensor_idx && getPressure(ag.vent) == 100) {
+				pressureSet = true;
 			}
+			if (pressureSet ||
+					((runtime - state.op_start).Seconds > 5 &&
+					getPressure(ag.vent) == ag.last_pressure)) {
+				var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
+				var door = ag.doors[door_idx];
+				// open the door
+				open(door);
+				state.timestamp = runtime;
+				state.op_start = runtime;
+				state.step_id = STEP_DOOR_CLOSE;
+			}
+			ag.last_pressure = getPressure(ag.vent);
 		}
 		if (state.step_id == STEP_DOOR_CLOSE) {
 			var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 			var door = ag.doors[door_idx];
-			
+
 			// wait until sensor is activated, or wait for 2 seconds
 			var sensor = ag.sensors[state.sensor_idx];
-			if (door.Open && sensor.IsActive) {
+			if (sensor.IsActive) {
 				state.timestamp = runtime;
 			}
 			var diff = runtime - state.timestamp;
 			if (diff.Seconds > 2) {
-				if (door.Open) {
-					door.ApplyAction("Open");
-					state.timestamp = runtime;
-					// close the door and wait another 2 seconds
+				if (door.OpenRatio != 0) {
+					close(door);
 				} else {
+					tryLock(door);
 					death_row.Add(i);
 				}
 			}
@@ -492,24 +470,14 @@ bool s_engageAirlock() {
 	for (int i = death_row.Count - 1; i >= 0; i--) {
 		var state = airlock_states[i];
 		var ag = airlock_groups[state.group_idx];
-		if (ag.doors[0].Open) {
-			ag.doors[0].ApplyAction("OnOff_On");
-			ag.doors[0].ApplyAction("Open");
-		} else {
-			ag.doors[0].ApplyAction("OnOff_Off");
-		}
-		if (ag.doors[1].Open) {
-			ag.doors[1].ApplyAction("OnOff_On");
-			ag.doors[1].ApplyAction("Open");
-		} else {
-			ag.doors[1].ApplyAction("OnOff_Off");
-		}
-		if (!isDepressurizing(ag.vent)) {
-			togglePressurize(ag.vent);
-		}
+		close(ag.doors[0]);
+		tryLock(ag.doors[0]);
+		close(ag.doors[1]);
+		tryLock(ag.doors[1]);
+		depressurize(ag.vent);
 		airlock_states.RemoveAt(i);
 	}
-	return true;
+	return false;
 }
 
 void Main() {
@@ -531,5 +499,5 @@ void Main() {
 	do {
 		result = states[current_state]();
 		current_state = (current_state + 1) % states.Length;
-	} while (!result);
+	} while (result);
 }
