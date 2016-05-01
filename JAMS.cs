@@ -491,9 +491,9 @@ void Main() {
 		airlock_groups = new List<Airlock_Group>();
 		current_state = 0;
 		init = true;
-		runtime = TimeSinceLastRun  - TimeSinceLastRun ; // 0
+		runtime = ElapsedTime  - ElapsedTime ; // 0
 	} else {
-		runtime += TimeSinceLastRun;
+		runtime += ElapsedTime;
 	}
 	bool result;
 	do {
