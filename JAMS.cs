@@ -480,14 +480,15 @@ bool s_engageAirlock() {
 		airlock_groups[state.group_idx] = ag;
 	}
 	for (int i = death_row.Count - 1; i >= 0; i--) {
-		var state = airlock_states[i];
+		int state_num = death_row[i];
+		var state = airlock_states[state_num];
 		var ag = airlock_groups[state.group_idx];
 		close(ag.doors[0]);
 		tryLock(ag.doors[0]);
 		close(ag.doors[1]);
 		tryLock(ag.doors[1]);
 		depressurize(ag.vent);
-		airlock_states.RemoveAt(i);
+		airlock_states.RemoveAt(state_num);
 	}
 	return false;
 }
