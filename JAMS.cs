@@ -503,6 +503,7 @@ void Main() {
 		current_state = 0;
 		init = true;
 		runtime = ElapsedTime  - ElapsedTime ; // 0
+		Me.SetCustomName("JAMS CPU");
 	} else {
 		runtime += ElapsedTime;
 	}
