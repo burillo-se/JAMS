@@ -42,6 +42,16 @@ bool init = false;
 int current_state;
 TimeSpan runtime;
 
+public void filterLocalGrid(List < IMyTerminalBlock > blocks) {
+	for (int i = blocks.Count - 1; i >= 0; i--) {
+		var block = blocks[i];
+		var grid = block.CubeGrid;
+		if (grid != Me.CubeGrid) {
+			blocks.RemoveAt(i);
+		}
+	}
+}
+
 string getBlockID(string val) {
 	var regex = new System.Text.RegularExpressions.Regex("\\{([\\dA-F]+)\\}");
 	var match = regex.Match(val);
@@ -180,6 +190,7 @@ int getPressure(IMyAirVent av) {
 
 Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	var blocks = group.Blocks;
+	filterLocalGrid(blocks);
 	Airlock_Group ag = new Airlock_Group();
 	ag.outer_sensor_idx = -1;
 	ag.last_pressure = -1;
