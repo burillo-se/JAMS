@@ -317,7 +317,8 @@ bool s_refreshState() {
 		}
 		Airlock_Group ? ag = parseGroup(group);
 		if (ag.HasValue) {
-			airlock_groups.Add(ag.Value);
+			if (!prev_groups.Contains(ag.Value.name))
+				airlock_groups.Add(ag.Value);
 			new_groups.Add(ag.Value.name);
 		}
 		else
