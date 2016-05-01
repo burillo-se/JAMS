@@ -496,8 +496,10 @@ void Main() {
 		runtime += ElapsedTime;
 	}
 	bool result;
+	int num_states = 0;
 	do {
 		result = states[current_state]();
 		current_state = (current_state + 1) % states.Length;
-	} while (result);
+		num_states++;
+	} while (result && num_states < 3);
 }
