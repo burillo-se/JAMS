@@ -36,7 +36,7 @@ public List<Airlock_State> airlock_states = null;
 public List<Airlock_Group> airlock_groups = null;
 
 // state machine
-Func < bool > [] states = null;
+Action [] states = null;
 
 bool init = false;
 int current_state;
@@ -132,7 +132,6 @@ void updateGroups() {
 			airlock_groups[g] = ag;
 		}
 	}
-
 }
 
 void pressurize(IMyAirVent av) {
@@ -260,8 +259,7 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 }
 
 
-bool s_checkSensors() {
-	bool result = true;
+void s_checkSensors() {
 	for (int i = 0; i < airlock_groups.Count; i++) {
 		var ag = airlock_groups[i];
 
@@ -274,7 +272,6 @@ bool s_checkSensors() {
 			}
 		}
 		if (active) {
-			result = false;
 			continue;
 		}
 
@@ -294,13 +291,12 @@ bool s_checkSensors() {
 			}
 		}
 	}
-	return result;
 }
 
-bool s_refreshState() {
+void s_refreshState() {
 	// don't refresh anything until we're idle, otherwise things get nasty
 	if (airlock_states.Count != 0) {
-		return true;
+		return;
 	}
 	HashSet<string> prev_groups = new HashSet<string>();
 	HashSet<string> new_groups = new HashSet<string>();
@@ -324,18 +320,15 @@ bool s_refreshState() {
 		else
 			Echo("Error parsing group " + group.Name);
 	}
-	updateGroups();
 	// now clear the list of groups not present in new_groups
 	for (int i = airlock_groups.Count - 1; i >= 0; i--) {
 		var name = airlock_groups[i].name;
 		if (!new_groups.Contains(name))
 			airlock_groups.RemoveAt(i);
 	}
-	saveGroups();
-	return false;
 }
 
-bool s_engageAirlock() {
+void s_engageAirlock() {
 	var death_row = new List<int>();
 	// process all airlocks that are currently active
 	for (int i = 0; i < airlock_states.Count; i++) {
@@ -490,30 +483,90 @@ bool s_engageAirlock() {
 		depressurize(ag.vent);
 		airlock_states.RemoveAt(state_num);
 	}
-	return false;
+}
+
+int[] state_cycle_counts;
+int[] state_fn_counts;
+int[] state_cycle_points;
+int[] state_fn_points;
+
+bool canContinue() {
+	bool hasHeadroom = false;
+	var prev_state = current_state == 0 ? states.Length - 1 : current_state - 1;
+	var next_state = (current_state + 1) % states.Length;
+	// store curent point
+	state_cycle_points[current_state] = Runtime.CurrentInstructionCount;
+	state_fn_points[current_state] = Runtime.CurrentMethodCallCount;
+
+	// now store how many cycles we've used during this iteration
+	state_cycle_counts[current_state] = state_cycle_points[current_state] - state_cycle_points[prev_state];
+	state_fn_counts[current_state] = state_fn_points[current_state] - state_fn_points[prev_state];
+
+	var prev_cycle_count = state_cycle_counts[prev_state];
+	var prev_fn_count = state_fn_counts[prev_state];
+
+	// if we have enough headroom (we want no more than 80% cycle/method count)
+	int projected_cycle_count = prev_cycle_count + state_cycle_counts[next_state];
+	int projected_fn_count = prev_fn_count + state_fn_counts[next_state];
+	Decimal cycle_percentage = (Decimal) projected_cycle_count / Runtime.MaxInstructionCount;
+	Decimal fn_percentage = (Decimal) projected_cycle_count / Runtime.MaxInstructionCount;
+
+	if (state_cycle_counts[next_state] != 0 && state_fn_counts[next_state] != 0 &&
+			cycle_percentage <= 0.8M && fn_percentage <= 0.8M) {
+		hasHeadroom = true;
+	}
+
+	// advance current state
+	current_state = (current_state + 1) % states.Length;
+
+	return hasHeadroom;
+}
+
+void ILReport(int states_executed) {
+	string il_str = String.Format("IL Count: {0}/{1} ({2:0.0}%)",
+				Runtime.CurrentInstructionCount,
+				Runtime.MaxInstructionCount,
+				(Decimal) Runtime.CurrentInstructionCount / Runtime.MaxInstructionCount * 100M);
+	string fn_str = String.Format("Call count: {0}/{1} ({2:0.0}%)",
+				Runtime.CurrentMethodCallCount,
+				Runtime.MaxMethodCallCount,
+				(Decimal) Runtime.CurrentMethodCallCount / Runtime.MaxMethodCallCount * 100M);
+	Echo(String.Format("States executed: {0}", states_executed));
+	Echo(il_str);
+	Echo(fn_str);
+}
+
+public void Save() {
+	saveGroups();
+}
+
+public Program() {
+	states = new Action [] {
+		s_refreshState,
+		s_checkSensors,
+		s_engageAirlock,
+	};
+	airlock_states = new List<Airlock_State>();
+	airlock_groups = new List<Airlock_Group>();
+	current_state = 1; // skip initial refresh
+	runtime = ElapsedTime  - ElapsedTime ; // 0
+	Me.SetCustomName("JAMS CPU");
+	s_refreshState();
+	updateGroups();
+	state_cycle_counts = new int[states.Length];
+	state_fn_counts = new int[states.Length];
+	state_cycle_points = new int[states.Length];
+	state_fn_points = new int[states.Length];
 }
 
 void Main() {
-	if (!init) {
-		states = new Func < bool > [] {
-			s_refreshState,
-			s_checkSensors,
-			s_engageAirlock,
-		};
-		airlock_states = new List<Airlock_State>();
-		airlock_groups = new List<Airlock_Group>();
-		current_state = 0;
-		init = true;
-		runtime = ElapsedTime  - ElapsedTime ; // 0
-		Me.SetCustomName("JAMS CPU");
-	} else {
-		runtime += ElapsedTime;
-	}
+	runtime += ElapsedTime;
 	bool result;
 	int num_states = 0;
 	do {
-		result = states[current_state]();
-		current_state = (current_state + 1) % states.Length;
+		states[current_state]();
 		num_states++;
-	} while (result && num_states < 3);
+	} while (canContinue() && num_states < states.Length);
+
+	ILReport(num_states);
 }
