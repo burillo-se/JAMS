@@ -187,9 +187,7 @@ int getPressure(IMyAirVent av) {
 	return Convert.ToInt32(p);
 }
 
-Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
-	var blocks = group.Blocks;
-	filterLocalGrid(blocks);
+Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	Airlock_Group ag = new Airlock_Group();
 	ag.outer_sensor_idx = -1;
 	ag.doors = new List<IMyDoor>();
@@ -197,7 +195,7 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	ag.sensor_to_door_idx = new Dictionary<int,int>();
 	ag.lights = new List<IMyLightingBlock>();
 	ag.vent = null;
-	ag.name = group.Name;
+	ag.name = name;
 
 	// we need find two doors and two sensors
 	for (int i = 0; i < blocks.Count; i++) {
@@ -310,11 +308,29 @@ void s_refreshState() {
 		if (!group.Name.StartsWith("JAMS")) {
 			continue;
 		}
-		Airlock_Group ? ag = parseGroup(group);
-		if (ag.HasValue) {
-			if (!prev_groups.Contains(ag.Value.name))
-				airlock_groups.Add(ag.Value);
-			new_groups.Add(ag.Value.name);
+		var blocks = group.Blocks;
+		filterLocalGrid(blocks);
+		if (blocks.Count == 0) {
+			// this group is from a foreign grid
+			continue;
+		}
+		Airlock_Group ? nag = parseGroup(group.Name, blocks);
+		if (nag.HasValue) {
+			var ag = nag.Value;
+			if (!prev_groups.Contains(ag.name)) {
+				airlock_groups.Add(ag);
+			} else {
+				// find old group and update it
+				for (int j = 0; j < airlock_groups.Count; j++) {
+					var oag = airlock_groups[j];
+					if (oag.name != ag.name)
+						continue;
+					ag.outer_sensor_idx = oag.outer_sensor_idx;
+					airlock_groups[j] = ag;
+					break;
+				}
+			}
+			new_groups.Add(ag.name);
 		}
 		else
 			Echo("Error parsing group " + group.Name);
@@ -398,12 +414,10 @@ void s_engageAirlock() {
 			if (diff.Seconds > 1) {
 
 				// if vent is depressurized, it's outer door
-				if (ag.outer_sensor_idx == -1) {
-					if (!ag.vent.IsPressurized()) {
-						ag.outer_sensor_idx = state.sensor_idx;
-					} else {
-						ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
-					}
+				if (!ag.vent.IsPressurized()) {
+					ag.outer_sensor_idx = state.sensor_idx;
+				} else {
+					ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
 				}
 
 				// close the door
