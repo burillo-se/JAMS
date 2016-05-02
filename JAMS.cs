@@ -454,7 +454,6 @@ void s_engageAirlock() {
 
 				// close the door
 				if (door.OpenRatio != 0 && (runtime - state.op_start).Seconds < 6) {
-					setColor(ag.lights, Color.Red);
 					close(door);
 				} else {
 					close(door);
