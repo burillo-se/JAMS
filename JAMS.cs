@@ -18,6 +18,7 @@ public struct Airlock_State {
 	public int step_id;
 	public int group_idx;
 	public int sensor_idx;
+	public int last_pressure;
 }
 
 public struct Airlock_Group {
@@ -27,7 +28,6 @@ public struct Airlock_Group {
 	public Dictionary<int,int> sensor_to_door_idx; // maps sensor idx to door idx
 	public List<IMyLightingBlock> lights;
 	public IMyAirVent vent;
-	public int last_pressure;
 	public int outer_sensor_idx; // -1 means we have no idea
 };
 
@@ -192,7 +192,6 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	filterLocalGrid(blocks);
 	Airlock_Group ag = new Airlock_Group();
 	ag.outer_sensor_idx = -1;
-	ag.last_pressure = -1;
 	ag.doors = new List<IMyDoor>();
 	ag.sensors = new List<IMySensorBlock>();
 	ag.sensor_to_door_idx = new Dictionary<int,int>();
@@ -258,7 +257,6 @@ Nullable<Airlock_Group> parseGroup(IMyBlockGroup group) {
 	return ag;
 }
 
-
 void s_checkSensors() {
 	for (int i = 0; i < airlock_groups.Count; i++) {
 		var ag = airlock_groups[i];
@@ -285,6 +283,7 @@ void s_checkSensors() {
 				state.op_start = runtime;
 				state.step_id = 0;
 				state.sensor_idx = s_idx;
+				state.last_pressure = -1;
 
 				airlock_states.Add(state);
 				break;
@@ -367,7 +366,7 @@ void s_engageAirlock() {
 					((runtime - state.op_start).Seconds > 5 && getPressure(ag.vent) == ag.last_pressure)) {
 				ready = true;
 			}
-			ag.last_pressure = getPressure(ag.vent);
+			state.last_pressure = getPressure(ag.vent);
 
 			// if we're ready, open the door and proceed to next state
 			if (ready) {
@@ -377,7 +376,7 @@ void s_engageAirlock() {
 				open(door);
 				state.timestamp = runtime;
 				state.op_start = runtime;
-				ag.last_pressure = -1;
+				state.last_pressure = -1;
 				state.step_id = STEP_DOOR_IN;
 			}
 		}
@@ -421,7 +420,7 @@ void s_engageAirlock() {
 						depressurize(ag.vent);
 					}
 					// update sensor id
-					ag.last_pressure = -1;
+					state.last_pressure = -1;
 					state.timestamp = runtime;
 					state.op_start = runtime;
 					state.sensor_idx = (state.sensor_idx + 1) % 2;
@@ -448,7 +447,7 @@ void s_engageAirlock() {
 				state.op_start = runtime;
 				state.step_id = STEP_DOOR_CLOSE;
 			}
-			ag.last_pressure = getPressure(ag.vent);
+			state.last_pressure = getPressure(ag.vent);
 		}
 		if (state.step_id == STEP_DOOR_CLOSE) {
 			var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
