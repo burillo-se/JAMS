@@ -443,10 +443,12 @@ void s_engageAirlock() {
 			if (diff.Seconds > 1) {
 
 				// if vent is depressurized, it's outer door
-				if (!ag.vent.IsPressurized()) {
-					ag.outer_sensor_idx = state.sensor_idx;
-				} else {
-					ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
+				if (door.OpenRatio == 1) {
+					if (!ag.vent.IsPressurized()) {
+						ag.outer_sensor_idx = state.sensor_idx;
+					} else {
+						ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
+					}
 				}
 
 				// close the door
