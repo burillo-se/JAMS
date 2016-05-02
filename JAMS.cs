@@ -166,6 +166,26 @@ void tryLock(IMyDoor door) {
 	}
 }
 
+void setColor(List<IMyLightingBlock> lights, Color c) {
+	for (int i = 0; i < lights.Count; i++) {
+		var light = lights[i];
+		if (light.GetValue < Color > ("Color").Equals(c) && light.Enabled) {
+			continue;
+		}
+		light.SetValue("Color", c);
+		// make sure we switch the color of the texture as well
+		light.ApplyAction("OnOff_Off");
+		light.ApplyAction("OnOff_On");
+	}
+}
+
+void turnOffLights(List<IMyLightingBlock> lights) {
+	for (int i = 0; i < lights.Count; i++) {
+		var light = lights[i];
+		light.ApplyAction("OnOff_Off");
+	}
+}
+
 int getPressure(IMyAirVent av) {
 	var p_regex = new System.Text.RegularExpressions.Regex("Room pressure: ([\\d\\.]+)\\%");
 	var p_match = p_regex.Match(av.DetailedInfo);
@@ -251,6 +271,7 @@ Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	tryLock(ag.doors[0]);
 	tryLock(ag.doors[1]);
 	depressurize(ag.vent);
+	turnOffLights(ag.lights);
 
 	return ag;
 }
@@ -284,6 +305,7 @@ void s_checkSensors() {
 				state.last_pressure = -1;
 
 				airlock_states.Add(state);
+				setColor(ag.lights, Color.Yellow);
 				break;
 			}
 		}
@@ -359,6 +381,7 @@ void s_engageAirlock() {
 		// decide what to do
 		if (state.step_id == STEP_INIT) {
 			bool ready = false;
+			bool stuck = false;
 
 			bool pressureSet = false;
 
@@ -378,8 +401,9 @@ void s_engageAirlock() {
 
 			// if the vent is already (de)pressurizing, wait until it's fully
 			// (de)pressurized, or just go to next stage if it's stuck
-			if (pressureSet ||
-					((runtime - state.op_start).Seconds > 5 && getPressure(ag.vent) == ag.last_pressure)) {
+			stuck = ((runtime - state.op_start).Seconds > 5 &&
+					getPressure(ag.vent) == state.last_pressure);
+			if (pressureSet || stuck) {
 				ready = true;
 			}
 			state.last_pressure = getPressure(ag.vent);
@@ -394,6 +418,11 @@ void s_engageAirlock() {
 				state.op_start = runtime;
 				state.last_pressure = -1;
 				state.step_id = STEP_DOOR_IN;
+				if (stuck) {
+					setColor(ag.lights, Color.Red);
+				} else {
+					setColor(ag.lights, Color.Green);
+				}
 			}
 		}
 
@@ -439,20 +468,22 @@ void s_engageAirlock() {
 					state.op_start = runtime;
 					state.sensor_idx = (state.sensor_idx + 1) % 2;
 					state.step_id = STEP_DOOR_OUT;
+					setColor(ag.lights, Color.Green);
 				}
 			}
 		}
 		if (state.step_id == STEP_DOOR_OUT) {
 			// wait until the room is fully pressurized/depressurized
 			bool pressureSet = false;
+			bool stuck = false;
 			if (state.sensor_idx == ag.outer_sensor_idx && getPressure(ag.vent) == 0) {
 				pressureSet = true;
 			} else if (state.sensor_idx != ag.outer_sensor_idx && getPressure(ag.vent) == 100) {
 				pressureSet = true;
 			}
-			if (pressureSet ||
-					((runtime - state.op_start).Seconds > 5 &&
-					getPressure(ag.vent) == ag.last_pressure)) {
+			stuck = ((runtime - state.op_start).Seconds > 5 &&
+					getPressure(ag.vent) == state.last_pressure);
+			if (pressureSet || stuck) {
 				var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 				var door = ag.doors[door_idx];
 				// open the door
@@ -460,6 +491,11 @@ void s_engageAirlock() {
 				state.timestamp = runtime;
 				state.op_start = runtime;
 				state.step_id = STEP_DOOR_CLOSE;
+				if (stuck) {
+					setColor(ag.lights, Color.Red);
+				} else {
+					setColor(ag.lights, Color.Green);
+				}
 			}
 			state.last_pressure = getPressure(ag.vent);
 		}
@@ -475,6 +511,7 @@ void s_engageAirlock() {
 			var diff = runtime - state.timestamp;
 			if (diff.Seconds > 2) {
 				if (door.OpenRatio != 0) {
+					setColor(ag.lights, Color.Green);
 					close(door);
 				} else {
 					tryLock(door);
@@ -494,6 +531,7 @@ void s_engageAirlock() {
 		close(ag.doors[1]);
 		tryLock(ag.doors[1]);
 		depressurize(ag.vent);
+		turnOffLights(ag.lights);
 		airlock_states.RemoveAt(state_num);
 	}
 }
