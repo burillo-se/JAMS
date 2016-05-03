@@ -270,7 +270,7 @@ Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	close(ag.doors[1]);
 	tryLock(ag.doors[0]);
 	tryLock(ag.doors[1]);
-	depressurize(ag.vent);
+	pressurize(ag.vent);
 	turnOffLights(ag.lights);
 
 	return ag;
@@ -533,7 +533,7 @@ void s_engageAirlock() {
 		tryLock(ag.doors[0]);
 		close(ag.doors[1]);
 		tryLock(ag.doors[1]);
-		depressurize(ag.vent);
+		pressurize(ag.vent);
 		turnOffLights(ag.lights);
 		airlock_states.RemoveAt(state_num);
 	}
