@@ -565,8 +565,14 @@ bool canContinue() {
 	Decimal cycle_percentage = (Decimal) projected_cycle_count / Runtime.MaxInstructionCount;
 	Decimal fn_percentage = (Decimal) projected_fn_count / Runtime.MaxMethodCallCount;
 
-	if (!isFirstRun && last_cycle_count != 0 && last_fn_count != 0 &&
-			cycle_percentage <= 0.8M && fn_percentage <= 0.8M) {
+	// to speed up initial run, keep 40% headroom for next states
+	bool initRunCycleHeadroom = isFirstRun && cycle_percentage <= 0.4M;
+	bool initRunFnHeadroom = isFirstRun && fn_percentage <= 0.4M;
+
+	bool runCycleHeadroom = !isFirstRun && cycle_percentage <= 0.8M;
+	bool runFnHeadroom = !isFirstRun && fn_percentage <= 0.8M;
+
+	if ((initRunCycleHeadroom && initRunFnHeadroom) || (runCycleHeadroom && runFnHeadroom)) {
 		hasHeadroom = true;
 	}
 
