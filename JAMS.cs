@@ -1,5 +1,5 @@
 /*
- * JAMS v1.0beta
+ * JAMS v1.0
  *
  * (JAMS Airlock Management System)
  *
