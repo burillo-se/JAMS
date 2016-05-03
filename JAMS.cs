@@ -471,7 +471,7 @@ void s_engageAirlock() {
 					state.op_start = runtime;
 					state.sensor_idx = (state.sensor_idx + 1) % 2;
 					state.step_id = STEP_DOOR_OUT;
-					setColor(ag.lights, Color.Green);
+					setColor(ag.lights, Color.Yellow);
 				}
 			}
 		}
