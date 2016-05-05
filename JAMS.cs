@@ -160,12 +160,6 @@ void close(IMyDoor door) {
 	door.ApplyAction("Open_Off");
 }
 
-void tryLock(IMyDoor door) {
-	if (door.OpenRatio == 0) {
-		door.ApplyAction("OnOff_Off");
-	}
-}
-
 void setColor(List<IMyLightingBlock> lights, Color c) {
 	for (int i = 0; i < lights.Count; i++) {
 		var light = lights[i];
@@ -268,8 +262,6 @@ Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	// close and disable all doors
 	close(ag.doors[0]);
 	close(ag.doors[1]);
-	tryLock(ag.doors[0]);
-	tryLock(ag.doors[1]);
 	pressurize(ag.vent);
 	turnOffLights(ag.lights);
 
@@ -457,7 +449,6 @@ void s_engageAirlock() {
 					close(door);
 				} else {
 					close(door);
-					tryLock(door);
 
 					// if it was an outer door, pressurize
 					if (state.sensor_idx == ag.outer_sensor_idx) {
@@ -517,7 +508,6 @@ void s_engageAirlock() {
 					setColor(ag.lights, Color.Green);
 					close(door);
 				} else {
-					tryLock(door);
 					death_row.Add(i);
 				}
 			}
@@ -530,9 +520,7 @@ void s_engageAirlock() {
 		var state = airlock_states[state_num];
 		var ag = airlock_groups[state.group_idx];
 		close(ag.doors[0]);
-		tryLock(ag.doors[0]);
 		close(ag.doors[1]);
-		tryLock(ag.doors[1]);
 		pressurize(ag.vent);
 		turnOffLights(ag.lights);
 		airlock_states.RemoveAt(state_num);
