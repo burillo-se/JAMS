@@ -11,6 +11,7 @@ const int STEP_INIT = 0;
 const int STEP_DOOR_IN = 1;
 const int STEP_DOOR_OUT = 2;
 const int STEP_DOOR_CLOSE = 3;
+const int STEP_DOOR_OVERRIDE = 4;
 
 public struct Airlock_State {
 	public TimeSpan timestamp;
@@ -284,6 +285,7 @@ void s_checkSensors() {
 			continue;
 		}
 
+		bool started = false;
 		for (int s_idx = 0; s_idx < ag.sensors.Count; s_idx++) {
 			var sensor = ag.sensors[s_idx];
 			if (sensor.IsActive) {
@@ -298,7 +300,27 @@ void s_checkSensors() {
 
 				airlock_states.Add(state);
 				setColor(ag.lights, Color.Yellow);
+				started = true;
 				break;
+			}
+		}
+		// check if any doors are active
+		if (!started) {
+			for (int d_idx = 0; d_idx < ag.doors.Count; d_idx++) {
+				var door = ag.doors[d_idx];
+				if (door.Open) {
+					// activate the override state
+					var state = new Airlock_State();
+					state.group_idx = i;
+					state.timestamp = runtime;
+					state.op_start = runtime;
+					state.step_id = STEP_DOOR_OVERRIDE;
+					state.last_pressure = -1;
+
+					airlock_states.Add(state);
+					setColor(ag.lights, Color.Yellow);
+					break;
+				}
 			}
 		}
 	}
@@ -509,6 +531,21 @@ void s_engageAirlock() {
 					close(door);
 				} else {
 					death_row.Add(i);
+				}
+			}
+		}
+		if (state.step_id == STEP_DOOR_OVERRIDE) {
+			// find the open door
+			for (int door_idx = 0; door_idx < ag.doors.Count; door_idx++) {
+				var diff = runtime - state.timestamp;
+				var door = ag.doors[door_idx];
+				if (diff.Seconds > 2) {
+					if (door.OpenRatio != 0) {
+						setColor(ag.lights, Color.Green);
+						close(door);
+					} else {
+						death_row.Add(i);
+					}
 				}
 			}
 		}
