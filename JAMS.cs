@@ -536,17 +536,23 @@ void s_engageAirlock() {
 		}
 		if (state.step_id == STEP_DOOR_OVERRIDE) {
 			// find the open door
+			bool hasOpenDoors = false;
 			for (int door_idx = 0; door_idx < ag.doors.Count; door_idx++) {
-				var diff = runtime - state.timestamp;
+				var diff = runtime - state.op_start;
 				var door = ag.doors[door_idx];
 				if (diff.Seconds > 2) {
 					if (door.OpenRatio != 0) {
 						setColor(ag.lights, Color.Green);
 						close(door);
-					} else {
-						death_row.Add(i);
+						hasOpenDoors = true;
 					}
+				} else {
+					// don't die until we've tried to close the doors
+					hasOpenDoors = true;
 				}
+			}
+			if (!hasOpenDoors) {
+				death_row.Add(i);
 			}
 		}
 		airlock_states[i] = state;
