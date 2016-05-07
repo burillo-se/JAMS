@@ -1,5 +1,5 @@
 /*
- * JAMS v1.0
+ * JAMS v1.01
  *
  * (JAMS Airlock Management System)
  *
@@ -11,6 +11,7 @@ const int STEP_INIT = 0;
 const int STEP_DOOR_IN = 1;
 const int STEP_DOOR_OUT = 2;
 const int STEP_DOOR_CLOSE = 3;
+const int STEP_DOOR_OVERRIDE = 4;
 
 public struct Airlock_State {
 	public TimeSpan timestamp;
@@ -160,12 +161,6 @@ void close(IMyDoor door) {
 	door.ApplyAction("Open_Off");
 }
 
-void tryLock(IMyDoor door) {
-	if (door.OpenRatio == 0) {
-		door.ApplyAction("OnOff_Off");
-	}
-}
-
 void setColor(List<IMyLightingBlock> lights, Color c) {
 	for (int i = 0; i < lights.Count; i++) {
 		var light = lights[i];
@@ -268,9 +263,7 @@ Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	// close and disable all doors
 	close(ag.doors[0]);
 	close(ag.doors[1]);
-	tryLock(ag.doors[0]);
-	tryLock(ag.doors[1]);
-	depressurize(ag.vent);
+	pressurize(ag.vent);
 	turnOffLights(ag.lights);
 
 	return ag;
@@ -292,6 +285,7 @@ void s_checkSensors() {
 			continue;
 		}
 
+		bool started = false;
 		for (int s_idx = 0; s_idx < ag.sensors.Count; s_idx++) {
 			var sensor = ag.sensors[s_idx];
 			if (sensor.IsActive) {
@@ -306,7 +300,27 @@ void s_checkSensors() {
 
 				airlock_states.Add(state);
 				setColor(ag.lights, Color.Yellow);
+				started = true;
 				break;
+			}
+		}
+		// check if any doors are active
+		if (!started) {
+			for (int d_idx = 0; d_idx < ag.doors.Count; d_idx++) {
+				var door = ag.doors[d_idx];
+				if (door.Open) {
+					// activate the override state
+					var state = new Airlock_State();
+					state.group_idx = i;
+					state.timestamp = runtime;
+					state.op_start = runtime;
+					state.step_id = STEP_DOOR_OVERRIDE;
+					state.last_pressure = -1;
+
+					airlock_states.Add(state);
+					setColor(ag.lights, Color.Yellow);
+					break;
+				}
 			}
 		}
 	}
@@ -457,7 +471,6 @@ void s_engageAirlock() {
 					close(door);
 				} else {
 					close(door);
-					tryLock(door);
 
 					// if it was an outer door, pressurize
 					if (state.sensor_idx == ag.outer_sensor_idx) {
@@ -517,9 +530,29 @@ void s_engageAirlock() {
 					setColor(ag.lights, Color.Green);
 					close(door);
 				} else {
-					tryLock(door);
 					death_row.Add(i);
 				}
+			}
+		}
+		if (state.step_id == STEP_DOOR_OVERRIDE) {
+			// find the open door
+			bool hasOpenDoors = false;
+			for (int door_idx = 0; door_idx < ag.doors.Count; door_idx++) {
+				var diff = runtime - state.op_start;
+				var door = ag.doors[door_idx];
+				if (diff.Seconds > 2) {
+					if (door.OpenRatio != 0) {
+						setColor(ag.lights, Color.Green);
+						close(door);
+						hasOpenDoors = true;
+					}
+				} else {
+					// don't die until we've tried to close the doors
+					hasOpenDoors = true;
+				}
+			}
+			if (!hasOpenDoors) {
+				death_row.Add(i);
 			}
 		}
 		airlock_states[i] = state;
@@ -530,10 +563,8 @@ void s_engageAirlock() {
 		var state = airlock_states[state_num];
 		var ag = airlock_groups[state.group_idx];
 		close(ag.doors[0]);
-		tryLock(ag.doors[0]);
 		close(ag.doors[1]);
-		tryLock(ag.doors[1]);
-		depressurize(ag.vent);
+		pressurize(ag.vent);
 		turnOffLights(ag.lights);
 		airlock_states.RemoveAt(state_num);
 	}
