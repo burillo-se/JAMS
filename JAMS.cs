@@ -343,7 +343,8 @@ void s_refreshState() {
 		if (!group.Name.StartsWith("JAMS")) {
 			continue;
 		}
-		var blocks = group.Blocks;
+		var blocks = new List<IMyTerminalBlock>();
+		group.GetBlocks(blocks);
 		filterLocalGrid(blocks);
 		if (blocks.Count == 0) {
 			// this group is from a foreign grid
