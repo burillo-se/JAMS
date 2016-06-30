@@ -39,7 +39,6 @@ public List<Airlock_Group> airlock_groups = null;
 // state machine
 Action [] states = null;
 
-bool init = false;
 int current_state;
 TimeSpan runtime;
 
@@ -652,7 +651,6 @@ public Program() {
 
 void Main() {
 	runtime += ElapsedTime;
-	bool result;
 	int num_states = 0;
 	cycle_count = 0;
 	fn_count = 0;
