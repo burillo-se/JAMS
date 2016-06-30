@@ -458,7 +458,7 @@ void s_engageAirlock() {
 
 				// if vent is depressurized, it's outer door
 				if (door.OpenRatio == 1) {
-					if (!ag.vent.IsPressurized()) {
+					if (!ag.vent.CanPressurize) {
 						ag.outer_sensor_idx = state.sensor_idx;
 					} else {
 						ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
@@ -641,7 +641,7 @@ public Program() {
 	airlock_states = new List<Airlock_State>();
 	airlock_groups = new List<Airlock_Group>();
 	current_state = 1; // skip initial refresh
-	runtime = ElapsedTime  - ElapsedTime ; // 0
+	runtime = Runtime.TimeSinceLastRun  - Runtime.TimeSinceLastRun; // 0
 	Me.SetCustomName("JAMS CPU");
 	s_refreshState();
 	updateGroups();
@@ -650,7 +650,7 @@ public Program() {
 }
 
 void Main() {
-	runtime += ElapsedTime;
+	runtime += Runtime.TimeSinceLastRun;
 	int num_states = 0;
 	cycle_count = 0;
 	fn_count = 0;
