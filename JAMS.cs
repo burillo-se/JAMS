@@ -293,13 +293,13 @@ public class JAMS_Airlock : JAMS_Group {
     if (sensor_idx == outer_sensor_idx || outer_sensor_idx == -1) {
      depressurize(vent);
 
-     if (vent.GetOxygenLevel() == 0) {
+     if (vent.GetOxygenLevel() < 0.05) {
       pressureSet = true;
      }
     } else {
      pressurize(vent);
 
-     if (vent.GetOxygenLevel() == 100) {
+     if (vent.GetOxygenLevel() > 0.9) {
       pressureSet = true;
      }
     }
@@ -307,7 +307,7 @@ public class JAMS_Airlock : JAMS_Group {
     // if the vent is already (de)pressurizing, wait until it's fully
     // (de)pressurized, or just go to next stage if it's stuck
     stuck = (elapsed.Seconds > 5 &&
-      (int) vent.GetOxygenLevel() == last_pressure);
+      vent.GetOxygenLevel() == last_pressure) && !pressureSet;
     if (pressureSet || stuck) {
      ready = true;
     }
@@ -381,13 +381,13 @@ public class JAMS_Airlock : JAMS_Group {
     // wait until the room is fully pressurized/depressurized
     bool pressureSet = false;
     bool stuck = false;
-    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() == 0) {
+    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() < 0.05) {
      pressureSet = true;
-    } else if (sensor_idx != outer_sensor_idx && vent.GetOxygenLevel() == 100) {
+    } else if (sensor_idx != outer_sensor_idx && vent.GetOxygenLevel() > 0.9) {
      pressureSet = true;
     }
     stuck = (elapsed.Seconds > 5 &&
-      (int) vent.GetOxygenLevel() == last_pressure);
+      vent.GetOxygenLevel() == last_pressure) && !pressureSet;
     if (pressureSet || stuck) {
      var door_idx = sensor_to_door_idx[sensor_idx];
      var door = doors[door_idx];
@@ -460,10 +460,10 @@ public class JAMS_Airlock : JAMS_Group {
   }
   // all hail the mighty raptor!
  True:
-  last_pressure = (int) vent.GetOxygenLevel();
+  last_pressure = vent.GetOxygenLevel();
   return true;
  False:
-  last_pressure = (int) vent.GetOxygenLevel();
+  last_pressure = vent.GetOxygenLevel();
   return false;
  }
 
@@ -492,7 +492,7 @@ public class JAMS_Airlock : JAMS_Group {
  private int outer_sensor_idx; // -1 means we have no idea
  private State step_id;
  private int sensor_idx;
- private int last_pressure;
+ private float last_pressure;
  private bool is_finished;
 }
 
