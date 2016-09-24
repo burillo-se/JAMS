@@ -7,40 +7,510 @@
  *
  */
 
-const int STEP_INIT = 0;
-const int STEP_DOOR_IN = 1;
-const int STEP_DOOR_OUT = 2;
-const int STEP_DOOR_CLOSE = 3;
-const int STEP_DOOR_OVERRIDE = 4;
-
-public class Airlock_State {
- public TimeSpan timestamp;
- public TimeSpan op_start;
- public int step_id;
- public int group_idx;
- public int sensor_idx;
- public int last_pressure;
+public abstract class JAMS_Group {
+ public abstract void updateFromGroup(IMyBlockGroup g);
+ public abstract void updateFromString(string s);
+ public abstract bool tryActivate(); // check if group should be activated
+ public abstract bool finished(); // check if state can be retired
+ protected abstract bool advanceStateImpl(); // move between states
+ public abstract void reset(); // reset the airlock
+ public abstract string toString(); // return a string representation of this group
+ public string name; // name of the group
+ public Program p; // reference to our programmable block
+ protected TimeSpan elapsed; // timestamp when the state has started
+ public bool advanceState() {
+  bool result = advanceStateImpl();
+  if (!result) {
+   elapsed += p.Runtime.TimeSinceLastRun;
+  }
+  return result;
+ }
+ protected void setColor(List<IMyLightingBlock> lights, Color c) {
+  if (p == null) {
+   return;
+  }
+  p.setColor(lights, c);
+ }
+ protected void close(IMyDoor door) {
+  if (p == null) {
+   return;
+  }
+  p.close(door);
+ }
+ protected void open(IMyDoor door) {
+  if (p == null) {
+   return;
+  }
+  p.open(door);
+ }
+ protected void pressurize(IMyAirVent vent) {
+  if (p == null) {
+   return;
+  }
+  p.pressurize(vent);
+ }
+ protected void depressurize(IMyAirVent vent) {
+  if (p == null) {
+   return;
+  }
+  p.depressurize(vent);
+ }
+ protected void turnOffLights(List<IMyLightingBlock> lights) {
+  if (p == null) {
+   return;
+  }
+  p.turnOffLights(lights);
+ }
 }
 
-public class Airlock_Group {
- public string name;
- public List<IMyDoor> doors;
- public List<IMySensorBlock> sensors;
- public Dictionary<int,int> sensor_to_door_idx; // maps sensor idx to door idx
- public List<IMyLightingBlock> lights;
- public IMyAirVent vent;
- public int outer_sensor_idx; // -1 means we have no idea
-};
+public class JAMS_Airlock : JAMS_Group {
+ public override string toString() {
+  return String.Format("Airlock:{0}:{1}", name, outer_sensor_idx);
+ }
+ public override void updateFromString(string s) {
+  string[] strs = s.Split(':');
+  // if this isn't our type of airlock, bail out
+  if (strs[0] != "Airlock") {
+   throw new Exception("Wrong airlock type");
+  }
+  if (name != strs[1]) {
+   throw new Exception("Wrong group name");
+  }
+  outer_sensor_idx = Convert.ToInt32(strs[2]);
+ }
+ private void mapSensorsToDoors() {
+   // figure out which sensor likely belongs to which door
+   int min_idx = -1;
+   double min_dist = 0;
+   var door = doors[0];
+   for (int i = 0; i < 2; i++) {
+    var d = Vector3D.Distance(door.GetPosition(), sensors[i].GetPosition());
+    if (d < min_dist || min_idx == -1) {
+     min_dist = d;
+     min_idx = i;
+    }
+   }
+   sensor_to_door_idx[min_idx] = 0;
+   sensor_to_door_idx[(min_idx + 1) % 2] = 1;
+ }
 
-public List<Airlock_State> airlock_states = null;
+ public JAMS_Airlock(Program p_in, string name_in, IMyAirVent v,
+                     List < IMyDoor > doors_in, List < IMyLightingBlock > lights_in,
+                     List < IMySensorBlock > sensors_in, int outer) {
+  if (name_in == null) {
+   throw new Exception("Name is null");
+  }
+  if (v == null) {
+   throw new Exception("Airvent is null");
+  }
+  if (doors_in == null || doors_in.Count != 2) {
+   throw new Exception ("Doors are null");
+  }
+  foreach (var door in doors_in) {
+   if (door == null) {
+    throw new Exception("Door is null");
+   }
+  }
+  if (sensors_in == null || sensors_in.Count != 2) {
+   throw new Exception ("Sensors are null");
+  }
+  foreach (var sensor in sensors_in) {
+   if (sensor == null) {
+    throw new Exception("Sensor is null");
+   }
+  }
+  if (lights_in == null) {
+   throw new Exception ("Lights are null");
+  }
+  foreach (var light in lights_in) {
+   if (light == null) {
+    throw new Exception("Light is null");
+   }
+  }
+  if (outer < -1 || outer > 1) {
+   throw new Exception("Wrong value for outer idx");
+  }
+  sensor_to_door_idx = new Dictionary<int, int>();
+  p = p_in;
+  name = name_in;
+  vent = v;
+  doors = doors_in;
+  sensors = sensors_in;
+  lights = lights_in;
+  outer_sensor_idx = outer;
 
-public List<Airlock_Group> airlock_groups = null;
+  reset();
+ }
+
+ public override void updateFromGroup(IMyBlockGroup g) {
+  var blocks = new List<IMyTerminalBlock>();
+  var tmp_doors = new List<IMyDoor>();
+  var tmp_sensors = new List<IMySensorBlock>();
+  var tmp_lights = new List<IMyLightingBlock>();
+  IMyAirVent tmp_vent = null;
+  g.GetBlocks(blocks);
+
+  // we need find two doors and two sensors
+  for (int i = 0; i < blocks.Count; i++) {
+   var block = blocks[i];
+   if ((block as IMyDoor) != null)
+    tmp_doors.Add(block as IMyDoor);
+   else if ((block as IMySensorBlock) != null)
+    tmp_sensors.Add(block as IMySensorBlock);
+   else if ((block as IMyAirVent) != null) {
+    if (tmp_vent != null) {
+     throw new Exception("Need to have one airvent");
+    }
+    tmp_vent = (block as IMyAirVent);
+   }
+   else if ((block as IMyLightingBlock) != null)
+    tmp_lights.Add(block as IMyLightingBlock);
+   else {
+    throw new Exception("Unexpected block: " + block.CustomName);
+   }
+  }
+  if (tmp_doors.Count != 2) {
+   throw new Exception("Need to have two doors");
+  }
+  if (tmp_sensors.Count != 2) {
+   throw new Exception("Need to have two sensors");
+  }
+  if (tmp_vent == null) {
+   throw new Exception("No air vent found");
+  }
+  doors = tmp_doors;
+  lights = tmp_lights;
+  sensors = tmp_sensors;
+  vent = tmp_vent;
+
+  mapSensorsToDoors();
+ }
+
+ public static JAMS_Group createFromGroup(IMyBlockGroup g, Program p) {
+  if (g == null) {
+   return null;
+  }
+  var blocks = new List<IMyTerminalBlock>();
+  var tmp_doors = new List<IMyDoor>();
+  var tmp_sensors = new List<IMySensorBlock>();
+  var tmp_lights = new List<IMyLightingBlock>();
+  IMyAirVent tmp_vent = null;
+  g.GetBlocks(blocks);
+
+  // we need find two doors and two sensors
+  for (int i = 0; i < blocks.Count; i++) {
+   var block = blocks[i];
+   if ((block as IMyDoor) != null)
+    tmp_doors.Add(block as IMyDoor);
+   else if ((block as IMySensorBlock) != null)
+    tmp_sensors.Add(block as IMySensorBlock);
+   else if ((block as IMyAirVent) != null) {
+    if (tmp_vent != null) {
+     throw new Exception("Need to have one airvent");
+    }
+    tmp_vent = (block as IMyAirVent);
+   }
+   else if ((block as IMyLightingBlock) != null)
+    tmp_lights.Add(block as IMyLightingBlock);
+   else {
+    throw new Exception("Unexpected block: " + block.CustomName);
+   }
+  }
+  if (tmp_doors.Count != 2) {
+   throw new Exception("Need to have two doors");
+  }
+  if (tmp_sensors.Count != 2) {
+   throw new Exception("Need to have two sensors");
+  }
+  if (tmp_vent == null) {
+   throw new Exception("No air vent found");
+  }
+
+  return new JAMS_Airlock(p, g.Name, tmp_vent, tmp_doors, tmp_lights, tmp_sensors, -1);
+ }
+
+ public override bool finished() {
+  return is_finished;
+ }
+
+ public override bool tryActivate() {
+  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
+   var sensor = sensors[s_idx];
+   if (sensor.IsActive) {
+    // activate the airlock
+    elapsed = TimeSpan.Zero;
+    step_id = State.STEP_INIT;
+    sensor_idx = s_idx;
+    last_pressure = -1;
+
+    setColor(lights, Color.Yellow);
+    return true;
+   }
+  }
+  // check if any doors are active
+  for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
+   var door = doors[d_idx];
+   if (door.Open) {
+    // activate the override state
+    elapsed = TimeSpan.Zero;
+    step_id = State.STEP_DOOR_OVERRIDE;
+    last_pressure = -1;
+
+    setColor(lights, Color.Yellow);
+    return true;
+   }
+  }
+  return false;
+ }
+
+ public override void reset() {
+  close(doors[0]);
+  close(doors[1]);
+  pressurize(vent);
+  turnOffLights(lights);
+  sensor_idx = -1;
+  last_pressure = -1;
+  is_finished = false;
+ }
+
+ protected override bool advanceStateImpl() {
+  // timeout
+  if (elapsed.Seconds > 10) {
+   setColor(lights, Color.Red);
+   is_finished = true;
+   goto False;
+  }
+
+  // decide what to do
+  switch (step_id) {
+   case State.STEP_INIT:
+   {
+    bool ready = false;
+    bool stuck = false;
+
+    bool pressureSet = false;
+
+    if (sensor_idx == outer_sensor_idx || outer_sensor_idx == -1) {
+     depressurize(vent);
+
+     if (vent.GetOxygenLevel() == 0) {
+      pressureSet = true;
+     }
+    } else {
+     pressurize(vent);
+
+     if (vent.GetOxygenLevel() == 100) {
+      pressureSet = true;
+     }
+    }
+
+    // if the vent is already (de)pressurizing, wait until it's fully
+    // (de)pressurized, or just go to next stage if it's stuck
+    stuck = (elapsed.Seconds > 5 &&
+      (int) vent.GetOxygenLevel() == last_pressure);
+    if (pressureSet || stuck) {
+     ready = true;
+    }
+
+    // if we're ready, open the door and proceed to next state
+    if (ready) {
+     var door_idx = sensor_to_door_idx[sensor_idx];
+     var door = doors[door_idx];
+     // make sure we do open the door
+     open(door);
+     nextState();
+     if (stuck) {
+      setColor(lights, Color.Red);
+     } else {
+      setColor(lights, Color.Green);
+     }
+     goto True;
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_IN_WAIT:
+   {
+    // wait 1 second after sensor stops being active, then close the
+    // door and start pressurizing/depressurizing
+
+    var sensor = sensors[sensor_idx];
+    var door_idx = sensor_to_door_idx[sensor_idx];
+    var door = doors[door_idx];
+
+    if (door.OpenRatio == 1 && !sensor.IsActive && elapsed.Seconds > 1) {
+     close(door);
+     nextState();
+     goto True;
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_IN:
+   {
+    var sensor = sensors[sensor_idx];
+    var door_idx = sensor_to_door_idx[sensor_idx];
+    var door = doors[door_idx];
+
+    // if vent is depressurized, it's outer door
+    if (!vent.CanPressurize) {
+     outer_sensor_idx = sensor_idx;
+    } else {
+     outer_sensor_idx = (sensor_idx + 1) % 2;
+    }
+
+    // close the door
+    if (door.OpenRatio == 0) {
+     // if it was an outer door, pressurize
+     if (sensor_idx == outer_sensor_idx) {
+      pressurize(vent);
+     } else {
+      depressurize(vent);
+     }
+     // update sensor id
+     sensor_idx = (sensor_idx + 1) % 2;
+     nextState();
+
+     setColor(lights, Color.Yellow);
+     goto True;
+    } else {
+     close(door);
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_OUT:
+   {
+    // wait until the room is fully pressurized/depressurized
+    bool pressureSet = false;
+    bool stuck = false;
+    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() == 0) {
+     pressureSet = true;
+    } else if (sensor_idx != outer_sensor_idx && vent.GetOxygenLevel() == 100) {
+     pressureSet = true;
+    }
+    stuck = (elapsed.Seconds > 5 &&
+      (int) vent.GetOxygenLevel() == last_pressure);
+    if (pressureSet || stuck) {
+     var door_idx = sensor_to_door_idx[sensor_idx];
+     var door = doors[door_idx];
+     // open the door
+     open(door);
+     nextState();
+     if (stuck) {
+      setColor(lights, Color.Red);
+     } else {
+      setColor(lights, Color.Green);
+     }
+     goto True;
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_OUT_WAIT:
+   {
+    var door_idx = sensor_to_door_idx[sensor_idx];
+    var door = doors[door_idx];
+
+    var sensor = sensors[sensor_idx];
+    if (door.OpenRatio == 1 || sensor.IsActive) {
+     nextState();
+     goto True;
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_CLOSE_WAIT:
+   {
+    var sensor = sensors[sensor_idx];
+    if (!sensor.IsActive && elapsed.Seconds > 1) {
+     nextState();
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_CLOSE:
+   {
+    var door_idx = sensor_to_door_idx[sensor_idx];
+    var door = doors[door_idx];
+
+    if (door.OpenRatio != 0) {
+     setColor(lights, Color.Green);
+     close(door);
+    } else {
+     is_finished = true;
+    }
+    goto False;
+   }
+   case State.STEP_DOOR_OVERRIDE: {
+    // find the open door
+    bool hasOpenDoors = false;
+    for (int door_idx = 0; door_idx < doors.Count; door_idx++) {
+     var door = doors[door_idx];
+     if (elapsed.Seconds > 2) {
+      if (door.OpenRatio != 0) {
+       setColor(lights, Color.Green);
+       close(door);
+       hasOpenDoors = true;
+      }
+     } else {
+      // don't die until we've tried to close the doors
+      hasOpenDoors = true;
+     }
+    }
+    if (!hasOpenDoors) {
+     is_finished = true;
+    }
+    goto False;
+   }
+  }
+  // all hail the mighty raptor!
+ True:
+  last_pressure = (int) vent.GetOxygenLevel();
+  return true;
+ False:
+  last_pressure = (int) vent.GetOxygenLevel();
+  return false;
+ }
+
+ private void nextState() {
+  step_id++;
+  elapsed = TimeSpan.Zero;
+  last_pressure = -1;
+ }
+
+ enum State {
+  STEP_INIT,
+  STEP_DOOR_IN_WAIT,
+  STEP_DOOR_IN,
+  STEP_DOOR_OUT,
+  STEP_DOOR_OUT_WAIT,
+  STEP_DOOR_CLOSE_WAIT,
+  STEP_DOOR_CLOSE,
+  STEP_DOOR_OVERRIDE
+ };
+
+ private List<IMyDoor> doors;
+ private List<IMySensorBlock> sensors;
+ private Dictionary<int,int> sensor_to_door_idx; // maps sensor idx to door idx
+ private List<IMyLightingBlock> lights;
+ private IMyAirVent vent;
+ private int outer_sensor_idx; // -1 means we have no idea
+ private State step_id;
+ private int sensor_idx;
+ private int last_pressure;
+ private bool is_finished;
+}
+
+JAMS_Group createFromGroup(IMyBlockGroup g) {
+ try {
+  return JAMS_Airlock.createFromGroup(g, this);
+ } catch (Exception) {
+ }
+ return null;
+}
+
+public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
+public List<JAMS_Group> airlocks = new List<JAMS_Group>();
 
 // state machine
 Action [] states = null;
 
 int current_state;
-TimeSpan runtime;
 
 void showOnHud(IMyTerminalBlock b) {
  if (b.GetProperty("ShowOnHUD") != null) {
@@ -64,70 +534,34 @@ public void filterLocalGrid(List < IMyTerminalBlock > blocks) {
  }
 }
 
-string groupToString(Airlock_Group ag) {
- return String.Format("{0}:{1}:{2}:{3}:{4}:{5}", ag.vent.EntityId,
-                      ag.doors[0].EntityId, ag.doors[1].EntityId,
-                      ag.sensors[0].EntityId, ag.sensors[1].EntityId,
-                      ag.outer_sensor_idx);
-}
-
-void saveGroups() {
+void saveAirlocks() {
  StringBuilder sb = new StringBuilder();
- for (int i = 0; i < airlock_groups.Count; i++) {
-  sb.Append(groupToString(airlock_groups[i]));
-  if (i != airlock_groups.Count - 1)
+ for (int i = 0; i < airlocks.Count; i++) {
+  sb.Append(airlocks[i].ToString());
+  if (i != airlocks.Count - 1)
    sb.Append(";");
  }
  Storage = sb.ToString();
 }
 
-void updateGroups() {
+void updateAirlocks() {
  if (Storage == "") {
   return;
  }
  string[] group_strs = Storage.Split(';');
  var skipList = new List<int>();
 
- for (int g = airlock_groups.Count - 1; g >= 0; g--) {
-  var ag = airlock_groups[g];
-  for (int i = group_strs.Length - 1; i >= 0; i--) {
-   if (skipList.Contains(i)) {
+ for (int i = airlocks.Count - 1; i >= 0; i--) {
+  var airlock = airlocks[i];
+
+  for (int j = 0; j < group_strs.Length; j++) {
+   if (skipList.Contains(j)) {
     continue;
    }
-   string group_str = group_strs[i];
-   string[] strs = group_str.Split(':');
    try {
-    long vent_id = Convert.ToInt64(strs[0]);
-    long door1_id = Convert.ToInt64(strs[1]);
-    long door2_id = Convert.ToInt64(strs[2]);
-    long sensor1_id = Convert.ToInt64(strs[3]);
-    long sensor2_id = Convert.ToInt64(strs[4]);
-    int outer_idx = Convert.ToInt32(strs[5]);
-
-    if (ag.vent.EntityId != vent_id) {
-     continue;
-    }
-    if (ag.doors[0].EntityId != door1_id) {
-     continue;
-    }
-    if (ag.doors[1].EntityId != door2_id) {
-     continue;
-    }
-    if (ag.sensors[0].EntityId != sensor1_id) {
-     continue;
-    }
-    if (ag.sensors[1].EntityId != sensor2_id) {
-     continue;
-    }
-    if (outer_idx != -1) {
-     ag.outer_sensor_idx = outer_idx;
-    }
-   } catch (Exception) {
-    Echo("Parsing Storage failed, assuming it's invalid");
-    Storage = "";
-    return;
-   }
-   skipList.Add(i);
+    airlock.updateFromString(group_strs[j]);
+    skipList.Add(j);
+   } catch (Exception) {}
   }
  }
 }
@@ -178,140 +612,17 @@ void turnOffLights(List<IMyLightingBlock> lights) {
  }
 }
 
-Airlock_Group parseGroup(string name, List<IMyTerminalBlock> blocks) {
- Airlock_Group ag = new Airlock_Group();
- ag.outer_sensor_idx = -1;
- ag.doors = new List<IMyDoor>();
- ag.sensors = new List<IMySensorBlock>();
- ag.sensor_to_door_idx = new Dictionary<int,int>();
- ag.lights = new List<IMyLightingBlock>();
- ag.vent = null;
- ag.name = name;
-
- // we need find two doors and two sensors
- for (int i = 0; i < blocks.Count; i++) {
-  var block = blocks[i];
-  if ((block as IMyDoor) != null)
-   ag.doors.Add(block as IMyDoor);
-  else if ((block as IMySensorBlock) != null)
-   ag.sensors.Add(block as IMySensorBlock);
-  else if ((block as IMyAirVent) != null) {
-   if (ag.vent != null) {
-    Echo("Need to have one airvent");
-    return null;
-   }
-   ag.vent = (block as IMyAirVent);
-  }
-  else if ((block as IMyLightingBlock) != null)
-   ag.lights.Add(block as IMyLightingBlock);
-  else {
-   Echo("Unexpected block: " + block.CustomName);
-   return null; // unexpected block
-  }
- }
- if (ag.doors.Count != 2) {
-  Echo("Need to have two doors");
-  return null;
- }
- if (ag.sensors.Count != 2) {
-  Echo("Need to have two sensors");
-  return null;
- }
- if (ag.vent == null) {
-  Echo("No air vent found");
-  return null;
- }
-
- // figure out which sensor likely belongs to which door
- int min_idx = -1;
- double min_dist = 0;
- var door = ag.doors[0];
- for (int i = 0; i < 2; i++) {
-  var d = Vector3D.Distance(door.GetPosition(), ag.sensors[i].GetPosition());
-  if (d < min_dist || min_idx == -1) {
-   min_dist = d;
-   min_idx = i;
-  }
- }
- ag.sensor_to_door_idx[min_idx] = 0;
- ag.sensor_to_door_idx[(min_idx + 1) % 2] = 1;
-
- // close and disable all doors
- close(ag.doors[0]);
- close(ag.doors[1]);
- pressurize(ag.vent);
- turnOffLights(ag.lights);
-
- return ag;
-}
-
-void s_checkSensors() {
- for (int i = 0; i < airlock_groups.Count; i++) {
-  var ag = airlock_groups[i];
-
-  // skip active airlocks
-  bool active = false;
-  for (int j = 0; j < airlock_states.Count; j++) {
-   if (airlock_states[j].group_idx == i) {
-    active = true;
-    break;
-   }
-  }
-  if (active) {
-   continue;
-  }
-
-  bool started = false;
-  for (int s_idx = 0; s_idx < ag.sensors.Count; s_idx++) {
-   var sensor = ag.sensors[s_idx];
-   if (sensor.IsActive) {
-    // activate the airlock
-    var state = new Airlock_State();
-    state.group_idx = i;
-    state.timestamp = runtime;
-    state.op_start = runtime;
-    state.step_id = 0;
-    state.sensor_idx = s_idx;
-    state.last_pressure = -1;
-
-    airlock_states.Add(state);
-    setColor(ag.lights, Color.Yellow);
-    started = true;
-    break;
-   }
-  }
-  // check if any doors are active
-  if (!started) {
-   for (int d_idx = 0; d_idx < ag.doors.Count; d_idx++) {
-    var door = ag.doors[d_idx];
-    if (door.Open) {
-     // activate the override state
-     var state = new Airlock_State();
-     state.group_idx = i;
-     state.timestamp = runtime;
-     state.op_start = runtime;
-     state.step_id = STEP_DOOR_OVERRIDE;
-     state.last_pressure = -1;
-
-     airlock_states.Add(state);
-     setColor(ag.lights, Color.Yellow);
-     break;
-    }
-   }
-  }
- }
-}
-
-void s_refreshState() {
+void s_refreshAirlocks() {
  // don't refresh anything until we're idle, otherwise things get nasty
- if (airlock_states.Count != 0) {
+ if (active_airlocks.Count != 0) {
   return;
  }
- HashSet<string> prev_groups = new HashSet<string>();
- HashSet<string> new_groups = new HashSet<string>();
- for (int i = 0; i < airlock_groups.Count; i++) {
-  prev_groups.Add(airlock_groups[i].name);
+ var tmp_list = new List<JAMS_Group>();
+ var name_to_airlock = new Dictionary<string, JAMS_Group>();
+ foreach (var airlock in airlocks) {
+  name_to_airlock.Add(airlock.name, airlock);
  }
+
  var groups = new List<IMyBlockGroup>();
  GridTerminalSystem.GetBlockGroups(groups);
  for (int i = 0; i < groups.Count; i++) {
@@ -327,222 +638,56 @@ void s_refreshState() {
    // this group is from a foreign grid
    continue;
   }
-  Airlock_Group ag = parseGroup(group.Name, blocks);
-  if (ag != null) {
-   if (!prev_groups.Contains(ag.name)) {
-    airlock_groups.Add(ag);
+  if (!name_to_airlock.ContainsKey(group.Name)) {
+   // just add this group to list
+   var airlock = createFromGroup(group);
+   if (airlock != null) {
+    tmp_list.Add(airlock);
    } else {
-    // find old group and update it
-    for (int j = 0; j < airlock_groups.Count; j++) {
-     var oag = airlock_groups[j];
-     if (oag.name != ag.name)
-      continue;
-     ag.outer_sensor_idx = oag.outer_sensor_idx;
-     airlock_groups[j] = ag;
-     break;
-    }
+    Echo("Error parsing group " + group.Name);
    }
-   new_groups.Add(ag.name);
+  } else {
+   // find old airlock and update it
+   var airlock = name_to_airlock[group.Name];
+   try {
+    airlock.p = this; // update pointer to program
+    airlock.updateFromGroup(group);
+    tmp_list.Add(airlock);
+   } catch (Exception) {
+    Echo("Error parsing group " + group.Name);
+   }
   }
-  else
-   Echo("Error parsing group " + group.Name);
  }
- // now clear the list of groups not present in new_groups
- for (int i = airlock_groups.Count - 1; i >= 0; i--) {
-  var name = airlock_groups[i].name;
-  if (!new_groups.Contains(name))
-   airlock_groups.RemoveAt(i);
- }
+ airlocks = tmp_list;
 }
 
-}
-
-void s_engageAirlock() {
- var death_row = new List<int>();
- // process all airlocks that are currently active
- for (int i = 0; i < airlock_states.Count; i++) {
-  var state = airlock_states[i];
-  var ag = airlock_groups[state.group_idx];
-
-  // timeout
-  if ((runtime - state.timestamp).Seconds > 10 || (runtime - state.op_start).Seconds > 10) {
-   setColor(ag.lights, Color.Red);
-   death_row.Add(i);
+void s_checkAirlocks() {
+ foreach (var airlock in airlocks) {
+  if (active_airlocks.Contains(airlock)) {
    continue;
   }
-
-  // decide what to do
-  if (state.step_id == STEP_INIT) {
-   bool ready = false;
-   bool stuck = false;
-
-   bool pressureSet = false;
-
-   if (state.sensor_idx == ag.outer_sensor_idx || ag.outer_sensor_idx == -1) {
-    depressurize(ag.vent);
-
-    if (ag.vent.GetOxygenLevel() == 0) {
-     pressureSet = true;
-    }
-   } else {
-    pressurize(ag.vent);
-
-    if (ag.vent.GetOxygenLevel() == 100) {
-     pressureSet = true;
-    }
-   }
-
-   // if the vent is already (de)pressurizing, wait until it's fully
-   // (de)pressurized, or just go to next stage if it's stuck
-   stuck = ((runtime - state.op_start).Seconds > 5 &&
-     (int) ag.vent.GetOxygenLevel() == state.last_pressure);
-   if (pressureSet || stuck) {
-    ready = true;
-   }
-   state.last_pressure = (int) ag.vent.GetOxygenLevel();
-
-   // if we're ready, open the door and proceed to next state
-   if (ready) {
-    var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-    var door = ag.doors[door_idx];
-    // make sure we do open the door
-    open(door);
-    state.timestamp = runtime;
-    state.op_start = runtime;
-    state.last_pressure = -1;
-    state.step_id = STEP_DOOR_IN;
-    if (stuck) {
-     setColor(ag.lights, Color.Red);
-    } else {
-     setColor(ag.lights, Color.Green);
-    }
-   }
-  }
-
-  if (state.step_id == STEP_DOOR_IN) {
-   // wait 1 second after sensor stops being active, then close the
-   // door and start pressurizing/depressurizing
-
-   var sensor = ag.sensors[state.sensor_idx];
-   var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-   var door = ag.doors[door_idx];
-
-   // if sensor is still active, update the timestamp
-   if (door.OpenRatio != 0 && sensor.IsActive) {
-    state.timestamp = runtime;
-   }
-
-   var diff = runtime - state.timestamp;
-   if (diff.Seconds > 1) {
-
-    // if vent is depressurized, it's outer door
-    if (door.OpenRatio == 1) {
-     if (!ag.vent.CanPressurize) {
-      ag.outer_sensor_idx = state.sensor_idx;
-     } else {
-      ag.outer_sensor_idx = (state.sensor_idx + 1) % 2;
-     }
-    }
-
-    // close the door
-    if (door.OpenRatio != 0 && (runtime - state.op_start).Seconds < 6) {
-     close(door);
-    } else {
-     close(door);
-
-     // if it was an outer door, pressurize
-     if (state.sensor_idx == ag.outer_sensor_idx) {
-      pressurize(ag.vent);
-     } else {
-      depressurize(ag.vent);
-     }
-     // update sensor id
-     state.last_pressure = -1;
-     state.timestamp = runtime;
-     state.op_start = runtime;
-     state.sensor_idx = (state.sensor_idx + 1) % 2;
-     state.step_id = STEP_DOOR_OUT;
-     setColor(ag.lights, Color.Yellow);
-    }
-   }
-  }
-  if (state.step_id == STEP_DOOR_OUT) {
-   // wait until the room is fully pressurized/depressurized
-   bool pressureSet = false;
-   bool stuck = false;
-   if (state.sensor_idx == ag.outer_sensor_idx && ag.vent.GetOxygenLevel() == 0) {
-    pressureSet = true;
-   } else if (state.sensor_idx != ag.outer_sensor_idx && ag.vent.GetOxygenLevel() == 100) {
-    pressureSet = true;
-   }
-   stuck = ((runtime - state.op_start).Seconds > 5 &&
-     (int) ag.vent.GetOxygenLevel() == state.last_pressure);
-   if (pressureSet || stuck) {
-    var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-    var door = ag.doors[door_idx];
-    // open the door
-    open(door);
-    state.timestamp = runtime;
-    state.op_start = runtime;
-    state.step_id = STEP_DOOR_CLOSE;
-    if (stuck) {
-     setColor(ag.lights, Color.Red);
-    } else {
-     setColor(ag.lights, Color.Green);
-    }
-   }
-   state.last_pressure = (int) ag.vent.GetOxygenLevel();
-  }
-  if (state.step_id == STEP_DOOR_CLOSE) {
-   var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
-   var door = ag.doors[door_idx];
-
-   // wait until sensor is activated, or wait for 2 seconds
-   var sensor = ag.sensors[state.sensor_idx];
-   if (sensor.IsActive) {
-    state.timestamp = runtime;
-   }
-   var diff = runtime - state.timestamp;
-   if (diff.Seconds > 2) {
-    if (door.OpenRatio != 0) {
-     setColor(ag.lights, Color.Green);
-     close(door);
-    } else {
-     death_row.Add(i);
-    }
-   }
-  }
-  if (state.step_id == STEP_DOOR_OVERRIDE) {
-   // find the open door
-   bool hasOpenDoors = false;
-   for (int door_idx = 0; door_idx < ag.doors.Count; door_idx++) {
-    var diff = runtime - state.op_start;
-    var door = ag.doors[door_idx];
-    if (diff.Seconds > 2) {
-     if (door.OpenRatio != 0) {
-      setColor(ag.lights, Color.Green);
-      close(door);
-      hasOpenDoors = true;
-     }
-    } else {
-     // don't die until we've tried to close the doors
-     hasOpenDoors = true;
-    }
-   }
-   if (!hasOpenDoors) {
-    death_row.Add(i);
-   }
+  if (airlock.tryActivate()) {
+   active_airlocks.Add(airlock);
   }
  }
- for (int i = death_row.Count - 1; i >= 0; i--) {
-  int state_num = death_row[i];
-  var state = airlock_states[state_num];
-  var ag = airlock_groups[state.group_idx];
-  close(ag.doors[0]);
-  close(ag.doors[1]);
-  pressurize(ag.vent);
-  turnOffLights(ag.lights);
-  airlock_states.RemoveAt(state_num);
+}
+
+void s_processAirlocks() {
+ var death_row = new List<int>();
+
+ // process all airlocks that are currently active
+ for (int i = 0; i < active_airlocks.Count; i++) {
+  var airlock = active_airlocks[i];
+
+  while (airlock.advanceState()) {}
+
+  if (airlock.finished()) {
+   airlock.reset();
+   death_row.Add(i);
+  }
+ }
+ foreach (var i in death_row) {
+  active_airlocks.RemoveAt(i);
  }
 }
 
@@ -591,35 +736,36 @@ void ILReport(int states_executed) {
 }
 
 public void Save() {
- saveGroups();
+ saveAirlocks();
 }
 
 public Program() {
  states = new Action [] {
-  s_refreshState,
-  s_checkSensors,
-  s_engageAirlock,
+  s_refreshAirlocks,
+  s_checkAirlocks,
+  s_processAirlocks,
  };
- airlock_states = new List<Airlock_State>();
- airlock_groups = new List<Airlock_Group>();
  current_state = 1; // skip initial refresh
- runtime = TimeSpan.Zero;
  Me.SetCustomName("JAMS CPU");
  hideFromHud(Me);
- s_refreshState();
- updateGroups();
+ s_refreshAirlocks();
+ updateAirlocks();
  state_cycle_counts = new int[states.Length];
 }
 
 void Main() {
- runtime += Runtime.TimeSinceLastRun;
  int num_states = 0;
  cycle_count = 0;
  do {
-  states[current_state]();
+  try {
+   states[current_state]();
+  } catch (Exception e) {
+   Echo(e.StackTrace);
+   throw;
+  }
   num_states++;
  } while (canContinue() && num_states < states.Length);
 
- Echo(String.Format("Airlocks count: {0}", airlock_groups.Count));
+ Echo(String.Format("Airlocks count: {0}", airlocks.Count));
  ILReport(num_states);
 }
