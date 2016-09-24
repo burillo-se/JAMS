@@ -178,27 +178,6 @@ void turnOffLights(List<IMyLightingBlock> lights) {
 	}
 }
 
-int getPressure(IMyAirVent av) {
-	var p_regex = new System.Text.RegularExpressions.Regex("Room pressure: ([\\d\\.]+)\\%");
-	var p_match = p_regex.Match(av.DetailedInfo);
-	var np_regex = new System.Text.RegularExpressions.Regex("Room pressure: (\\w+)");
-	var np_match = np_regex.Match(av.DetailedInfo);
-
-	if (!p_match.Success && !np_match.Success) {
-		throw new Exception("Fail");
-	}
-	if (np_match.Groups[1].Value == "Not") {
-		return -1;
-	}
-
-	Decimal p = new Decimal();
-	bool result = Decimal.TryParse(p_match.Groups[1].Value, out p);
-	if (!result) {
-		throw new Exception("Invalid detailed info format!");
-	}
-	return Convert.ToInt32(p);
-}
-
 Airlock_Group parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	Airlock_Group ag = new Airlock_Group();
 	ag.outer_sensor_idx = -1;
@@ -400,13 +379,13 @@ void s_engageAirlock() {
 			if (state.sensor_idx == ag.outer_sensor_idx || ag.outer_sensor_idx == -1) {
 				depressurize(ag.vent);
 
-				if (getPressure(ag.vent) == 0) {
+				if (ag.vent.GetOxygenLevel() == 0) {
 					pressureSet = true;
 				}
 			} else {
 				pressurize(ag.vent);
 
-				if (getPressure(ag.vent) == 100) {
+				if (ag.vent.GetOxygenLevel() == 100) {
 					pressureSet = true;
 				}
 			}
@@ -414,11 +393,11 @@ void s_engageAirlock() {
 			// if the vent is already (de)pressurizing, wait until it's fully
 			// (de)pressurized, or just go to next stage if it's stuck
 			stuck = ((runtime - state.op_start).Seconds > 5 &&
-					getPressure(ag.vent) == state.last_pressure);
+					(int) ag.vent.GetOxygenLevel() == state.last_pressure);
 			if (pressureSet || stuck) {
 				ready = true;
 			}
-			state.last_pressure = getPressure(ag.vent);
+			state.last_pressure = (int) ag.vent.GetOxygenLevel();
 
 			// if we're ready, open the door and proceed to next state
 			if (ready) {
@@ -489,13 +468,13 @@ void s_engageAirlock() {
 			// wait until the room is fully pressurized/depressurized
 			bool pressureSet = false;
 			bool stuck = false;
-			if (state.sensor_idx == ag.outer_sensor_idx && getPressure(ag.vent) == 0) {
+			if (state.sensor_idx == ag.outer_sensor_idx && ag.vent.GetOxygenLevel() == 0) {
 				pressureSet = true;
-			} else if (state.sensor_idx != ag.outer_sensor_idx && getPressure(ag.vent) == 100) {
+			} else if (state.sensor_idx != ag.outer_sensor_idx && ag.vent.GetOxygenLevel() == 100) {
 				pressureSet = true;
 			}
 			stuck = ((runtime - state.op_start).Seconds > 5 &&
-					getPressure(ag.vent) == state.last_pressure);
+					(int) ag.vent.GetOxygenLevel() == state.last_pressure);
 			if (pressureSet || stuck) {
 				var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
 				var door = ag.doors[door_idx];
@@ -510,7 +489,7 @@ void s_engageAirlock() {
 					setColor(ag.lights, Color.Green);
 				}
 			}
-			state.last_pressure = getPressure(ag.vent);
+			state.last_pressure = (int) ag.vent.GetOxygenLevel();
 		}
 		if (state.step_id == STEP_DOOR_CLOSE) {
 			var door_idx = ag.sensor_to_door_idx[state.sensor_idx];
