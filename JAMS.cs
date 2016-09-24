@@ -760,6 +760,8 @@ void Main() {
   try {
    states[current_state]();
   } catch (Exception e) {
+   Me.SetCustomName("JAMS Exception");
+   showOnHud(Me);
    Echo(e.StackTrace);
    throw;
   }
