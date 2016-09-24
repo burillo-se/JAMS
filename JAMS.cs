@@ -634,5 +634,6 @@ void Main() {
 		num_states++;
 	} while (canContinue() && num_states < states.Length);
 
+	Echo(String.Format("Airlocks count: {0}", airlock_groups.Count));
 	ILReport(num_states);
 }
