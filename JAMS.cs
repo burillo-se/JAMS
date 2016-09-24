@@ -545,9 +545,7 @@ void s_engageAirlock() {
 }
 
 int[] state_cycle_counts;
-int[] state_fn_counts;
 int cycle_count;
-int fn_count;
 
 bool canContinue() {
 	bool hasHeadroom = false;
@@ -555,36 +553,28 @@ bool canContinue() {
 	var prev_state = current_state == 0 ? states.Length - 1 : current_state - 1;
 	var next_state = (current_state + 1) % states.Length;
 	var cur_i = Runtime.CurrentInstructionCount;
-	var cur_fn = Runtime.CurrentMethodCallCount;
 
 	// now store how many cycles we've used during this iteration
 	state_cycle_counts[current_state] = cur_i - cycle_count;
-	state_fn_counts[current_state] = cur_fn - fn_count;
 
 	var last_cycle_count = state_cycle_counts[next_state];
-	var last_fn_count = state_fn_counts[next_state];
 
 	// if we have enough headroom (we want no more than 80% cycle/method count)
 	int projected_cycle_count = cur_i + last_cycle_count;
-	int projected_fn_count = cur_fn + last_fn_count;
 	Decimal cycle_percentage = (Decimal) projected_cycle_count / Runtime.MaxInstructionCount;
-	Decimal fn_percentage = (Decimal) projected_fn_count / Runtime.MaxMethodCallCount;
 
 	// to speed up initial run, keep 40% headroom for next states
 	bool initRunCycleHeadroom = isFirstRun && cycle_percentage <= 0.4M;
-	bool initRunFnHeadroom = isFirstRun && fn_percentage <= 0.4M;
 
 	bool runCycleHeadroom = !isFirstRun && cycle_percentage <= 0.8M;
-	bool runFnHeadroom = !isFirstRun && fn_percentage <= 0.8M;
 
-	if ((initRunCycleHeadroom && initRunFnHeadroom) || (runCycleHeadroom && runFnHeadroom)) {
+	if (initRunCycleHeadroom || runCycleHeadroom) {
 		hasHeadroom = true;
 	}
 
 	// advance current state and store IL count values
 	current_state = next_state;
 	cycle_count = cur_i;
-	fn_count = cur_fn;
 
 	return hasHeadroom;
 }
@@ -594,13 +584,8 @@ void ILReport(int states_executed) {
 				Runtime.CurrentInstructionCount,
 				Runtime.MaxInstructionCount,
 				(Decimal) Runtime.CurrentInstructionCount / Runtime.MaxInstructionCount * 100M);
-	string fn_str = String.Format("Call count: {0}/{1} ({2:0.0}%)",
-				Runtime.CurrentMethodCallCount,
-				Runtime.MaxMethodCallCount,
-				(Decimal) Runtime.CurrentMethodCallCount / Runtime.MaxMethodCallCount * 100M);
 	Echo(String.Format("States executed: {0}", states_executed));
 	Echo(il_str);
-	Echo(fn_str);
 }
 
 public void Save() {
@@ -621,14 +606,12 @@ public Program() {
 	s_refreshState();
 	updateGroups();
 	state_cycle_counts = new int[states.Length];
-	state_fn_counts = new int[states.Length];
 }
 
 void Main() {
 	runtime += Runtime.TimeSinceLastRun;
 	int num_states = 0;
 	cycle_count = 0;
-	fn_count = 0;
 	do {
 		states[current_state]();
 		num_states++;
