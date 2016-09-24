@@ -13,7 +13,7 @@ const int STEP_DOOR_OUT = 2;
 const int STEP_DOOR_CLOSE = 3;
 const int STEP_DOOR_OVERRIDE = 4;
 
-public struct Airlock_State {
+public class Airlock_State {
 	public TimeSpan timestamp;
 	public TimeSpan op_start;
 	public int step_id;
@@ -22,7 +22,7 @@ public struct Airlock_State {
 	public int last_pressure;
 }
 
-public struct Airlock_Group {
+public class Airlock_Group {
 	public string name;
 	public List<IMyDoor> doors;
 	public List<IMySensorBlock> sensors;
@@ -128,8 +128,6 @@ void updateGroups() {
 				ag.outer_sensor_idx = outer_idx;
 
 			skipList.Add(i);
-
-			airlock_groups[g] = ag;
 		}
 	}
 }
@@ -201,7 +199,7 @@ int getPressure(IMyAirVent av) {
 	return Convert.ToInt32(p);
 }
 
-Nullable<Airlock_Group> parseGroup(string name, List<IMyTerminalBlock> blocks) {
+Airlock_Group parseGroup(string name, List<IMyTerminalBlock> blocks) {
 	Airlock_Group ag = new Airlock_Group();
 	ag.outer_sensor_idx = -1;
 	ag.doors = new List<IMyDoor>();
@@ -350,9 +348,8 @@ void s_refreshState() {
 			// this group is from a foreign grid
 			continue;
 		}
-		Airlock_Group ? nag = parseGroup(group.Name, blocks);
-		if (nag.HasValue) {
-			var ag = nag.Value;
+		Airlock_Group ag = parseGroup(group.Name, blocks);
+		if (ag != null) {
 			if (!prev_groups.Contains(ag.name)) {
 				airlock_groups.Add(ag);
 			} else {
@@ -555,8 +552,6 @@ void s_engageAirlock() {
 				death_row.Add(i);
 			}
 		}
-		airlock_states[i] = state;
-		airlock_groups[state.group_idx] = ag;
 	}
 	for (int i = death_row.Count - 1; i >= 0; i--) {
 		int state_num = death_row[i];
