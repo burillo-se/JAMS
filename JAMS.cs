@@ -97,39 +97,8 @@ public class JAMS_Airlock : JAMS_Group {
  public JAMS_Airlock(Program p_in, string name_in, IMyAirVent v,
                      List < IMyDoor > doors_in, List < IMyLightingBlock > lights_in,
                      List < IMySensorBlock > sensors_in, int outer) {
-  if (name_in == null) {
-   throw new Exception("Name is null");
-  }
-  if (v == null) {
-   throw new Exception("Airvent is null");
-  }
-  if (doors_in == null || doors_in.Count != 2) {
-   throw new Exception ("Doors are null");
-  }
-  foreach (var door in doors_in) {
-   if (door == null) {
-    throw new Exception("Door is null");
-   }
-  }
-  if (sensors_in == null || sensors_in.Count != 2) {
-   throw new Exception ("Sensors are null");
-  }
-  foreach (var sensor in sensors_in) {
-   if (sensor == null) {
-    throw new Exception("Sensor is null");
-   }
-  }
-  if (lights_in == null) {
-   throw new Exception ("Lights are null");
-  }
-  foreach (var light in lights_in) {
-   if (light == null) {
-    throw new Exception("Light is null");
-   }
-  }
-  if (outer < -1 || outer > 1) {
-   throw new Exception("Wrong value for outer idx");
-  }
+  // in the interest of saving cycles, constructor assumes the data is valid.
+  // if it isn't, it's your fault.
   sensor_to_door_idx = new Dictionary<int, int>();
   p = p_in;
   name = name_in;
@@ -187,9 +156,6 @@ public class JAMS_Airlock : JAMS_Group {
  }
 
  public static JAMS_Group createFromGroup(IMyBlockGroup g, Program p) {
-  if (g == null) {
-   return null;
-  }
   var blocks = new List<IMyTerminalBlock>();
   var tmp_doors = new List<IMyDoor>();
   var tmp_sensors = new List<IMySensorBlock>();
