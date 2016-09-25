@@ -158,6 +158,7 @@ public abstract class JAMS_Group {
  public string name; // name of the group
  public Program p; // reference to our programmable block
  protected TimeSpan elapsed; // timestamp when the state has started
+ public abstract bool isValid(); // check if all blocks in the airlock are still valid
  public bool advanceState() {
   bool result = advanceStateImpl();
   if (!result) {
@@ -207,9 +208,46 @@ public abstract class JAMS_Group {
   }
   return p.slimBlock(block);
  }
+ protected bool blockExists(IMyTerminalBlock block) {
+  if (p == null) {
+   // assume block exists
+   return true;
+  }
+  return p.blockExists(block);
+ }
 }
 
 public class JAMS_Airlock : JAMS_Group {
+ public override bool isValid() {
+  if (!blockExists(vent) || slimBlock(vent) == null) {
+   return false;
+  }
+  if (doors.Count != 2) {
+   return false;
+  }
+  foreach (var door in doors) {
+   if (!blockExists(door) || slimBlock(door) == null) {
+    return false;
+   }
+  }
+  if (sensors.Count != 2) {
+   return false;
+  }
+  foreach (var sensor in sensors) {
+   if (!blockExists(sensor) || slimBlock(sensor) == null) {
+    return false;
+   }
+  }
+  // we do not depend on lights, so if they're dead, just remove them from the
+  // list and move on with our lives
+  for (int i = lights.Count - 1; i >= 0; i--) {
+   var light = lights[i];
+   if (!blockExists(light) || slimBlock(light) == null) {
+    lights.RemoveAt(i);
+   }
+  }
+  return true;
+ }
  public override string toString() {
   return String.Format("Airlock:{0}:{1}", name, outer_sensor_idx);
  }
@@ -634,6 +672,10 @@ IMySlimBlock slimBlock(IMyTerminalBlock b) {
  return b.CubeGrid.GetCubeBlock(b.Position);
 }
 
+bool blockExists(IMyTerminalBlock b) {
+ return b.CubeGrid.CubeExists(b.Position);
+}
+
 // find which grid has a block at world_pos, excluding "self"
 IMyCubeGrid findGrid(Vector3D w_p, IMyCubeGrid self, List < IMyCubeGrid > grids) {
  foreach (var g in grids) {
@@ -874,6 +916,23 @@ void turnOffLights(List<IMyLightingBlock> lights) {
  }
 }
 
+void validateAirlocks() {
+ for (int i = active_airlocks.Count - 1; i >= 0; i--) {
+  var airlock = active_airlocks[i];
+  if (!airlock.isValid()) {
+   // remove this airlock from existence
+   active_airlocks.RemoveAt(i);
+  }
+ }
+  for (int i = airlocks.Count - 1; i >= 0; i--) {
+   var airlock = airlocks[i];
+   if (!airlock.isValid()) {
+    // remove this airlock from existence
+    airlocks.RemoveAt(i);
+   }
+  }
+}
+
 void s_refreshAirlocks() {
  // don't refresh anything until we're idle, otherwise things get nasty
  if (active_airlocks.Count != 0) {
@@ -1028,6 +1087,7 @@ public Program() {
 void Main() {
  int num_states = 0;
  cycle_count = 0;
+ validateAirlocks();
  do {
   try {
    states[current_state]();
