@@ -497,6 +497,17 @@ public class JAMS_Airlock : JAMS_Group {
     var door_idx = sensor_to_door_idx[sensor_idx];
     var door = doors[door_idx];
 
+    if (door.OpenRatio != 0) {
+     // if vent is depressurized, it's outer door
+     if (!vent.CanPressurize) {
+      depressurize(vent);
+      outer_sensor_idx = sensor_idx;
+     } else {
+      pressurize(vent);
+      outer_sensor_idx = (sensor_idx + 1) % 2;
+     }
+    }
+
     if (door.OpenRatio == 1 && !sensor.IsActive && elapsed.Seconds > 1) {
      close(door);
      nextState();
@@ -509,13 +520,6 @@ public class JAMS_Airlock : JAMS_Group {
     var sensor = sensors[sensor_idx];
     var door_idx = sensor_to_door_idx[sensor_idx];
     var door = doors[door_idx];
-
-    // if vent is depressurized, it's outer door
-    if (!vent.CanPressurize) {
-     outer_sensor_idx = sensor_idx;
-    } else {
-     outer_sensor_idx = (sensor_idx + 1) % 2;
-    }
 
     // close the door
     if (door.OpenRatio == 0) {
