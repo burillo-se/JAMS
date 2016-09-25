@@ -184,17 +184,21 @@ public abstract class JAMS_Group {
   }
   p.open(door);
  }
- protected void pressurize(IMyAirVent vent) {
+ protected void pressurize(List<IMyAirVent> vents) {
   if (p == null) {
    return;
   }
-  p.pressurize(vent);
+  foreach (var vent in vents) {
+   p.pressurize(vent);
+  }
  }
- protected void depressurize(IMyAirVent vent) {
+ protected void depressurize(List<IMyAirVent> vents) {
   if (p == null) {
    return;
   }
-  p.depressurize(vent);
+  foreach (var vent in vents) {
+   p.depressurize(vent);
+  }
  }
  protected void turnOffLights(List<IMyLightingBlock> lights) {
   if (p == null) {
@@ -215,12 +219,34 @@ public abstract class JAMS_Group {
   }
   return p.blockExists(block);
  }
+ static protected float curOxygenLevel(List<IMyAirVent> vents) {
+  float cur = 0, total = 0;
+  foreach (var vent in vents) {
+   total += 1;
+   cur += vent.GetOxygenLevel();
+  }
+  if (total == 0) {
+   throw new Exception("No airvents found");
+  }
+  return cur / total;
+ }
+ static protected bool canPressurize(List<IMyAirVent> vents) {
+  foreach (var vent in vents) {
+   return vent.CanPressurize;
+  }
+  throw new Exception("No airvents found");
+ }
 }
 
 public class JAMS_Airlock : JAMS_Group {
  public override bool isValid() {
-  if (!blockExists(vent) || slimBlock(vent) == null) {
+  if (vents.Count == 0) {
    return false;
+  }
+  foreach (var vent in vents) {
+   if (!blockExists(vent) || slimBlock(vent) == null) {
+    return false;
+   }
   }
   if (doors.Count != 2) {
    return false;
@@ -278,19 +304,21 @@ public class JAMS_Airlock : JAMS_Group {
    sensor_to_door_idx[(min_idx + 1) % 2] = 1;
  }
 
- public JAMS_Airlock(Program p_in, string name_in, IMyAirVent v,
+ public JAMS_Airlock(Program p_in, string name_in, List<IMyAirVent> vents_in,
                      List < IMyDoor > doors_in, List < IMyLightingBlock > lights_in,
-                     List < IMySensorBlock > sensors_in, int outer) {
+                     List < IMySensorBlock > sensors_in) {
   // in the interest of saving cycles, constructor assumes the data is valid.
   // if it isn't, it's your fault.
   sensor_to_door_idx = new Dictionary<int, int>();
   p = p_in;
   name = name_in;
-  vent = v;
+  vents = vents_in;
   doors = doors_in;
   sensors = sensors_in;
   lights = lights_in;
-  outer_sensor_idx = outer;
+  outer_sensor_idx = -1;
+
+  mapSensorsToDoors();
 
   reset();
  }
@@ -300,7 +328,7 @@ public class JAMS_Airlock : JAMS_Group {
   var tmp_doors = new List<IMyDoor>();
   var tmp_sensors = new List<IMySensorBlock>();
   var tmp_lights = new List<IMyLightingBlock>();
-  IMyAirVent tmp_vent = null;
+  var tmp_vents = new List<IMyAirVent>();
   g.GetBlocks(blocks);
 
   // we need find two doors and two sensors
@@ -309,17 +337,14 @@ public class JAMS_Airlock : JAMS_Group {
    if (slimBlock(block) == null) {
     continue;
    }
-   if ((block as IMyDoor) != null)
+   if (block is IMyDoor)
     tmp_doors.Add(block as IMyDoor);
-   else if ((block as IMySensorBlock) != null)
+   else if (block is IMySensorBlock)
     tmp_sensors.Add(block as IMySensorBlock);
-   else if ((block as IMyAirVent) != null) {
-    if (tmp_vent != null) {
-     throw new Exception("Need to have one airvent");
-    }
-    tmp_vent = (block as IMyAirVent);
+   else if (block is IMyAirVent) {
+    tmp_vents.Add(block as IMyAirVent);
    }
-   else if ((block as IMyLightingBlock) != null)
+   else if (block is IMyLightingBlock)
     tmp_lights.Add(block as IMyLightingBlock);
    else {
     throw new Exception("Unexpected block: " + block.CustomName);
@@ -331,13 +356,13 @@ public class JAMS_Airlock : JAMS_Group {
   if (tmp_sensors.Count != 2) {
    throw new Exception("Need to have two sensors");
   }
-  if (tmp_vent == null) {
-   throw new Exception("No air vent found");
+  if (tmp_vents.Count == 0) {
+   throw new Exception("No air vents found");
   }
   doors = tmp_doors;
   lights = tmp_lights;
   sensors = tmp_sensors;
-  vent = tmp_vent;
+  vents = tmp_vents;
 
   mapSensorsToDoors();
  }
@@ -347,30 +372,23 @@ public class JAMS_Airlock : JAMS_Group {
   var tmp_doors = new List<IMyDoor>();
   var tmp_sensors = new List<IMySensorBlock>();
   var tmp_lights = new List<IMyLightingBlock>();
-  IMyAirVent tmp_vent = null;
+  var tmp_vents = new List<IMyAirVent>();
   g.GetBlocks(blocks);
-
-  if (p == null) {
-   throw new Exception("Program is null");
-  }
 
   // we need find two doors and two sensors
   for (int i = 0; i < blocks.Count; i++) {
    var block = blocks[i];
-   if (p.slimBlock(block) == null) {
+   if (p != null && p.slimBlock(block) == null) {
     continue;
    }
-   if ((block as IMyDoor) != null)
+   if (block is IMyDoor)
     tmp_doors.Add(block as IMyDoor);
-   else if ((block as IMySensorBlock) != null)
+   else if (block is IMySensorBlock)
     tmp_sensors.Add(block as IMySensorBlock);
-   else if ((block as IMyAirVent) != null) {
-    if (tmp_vent != null) {
-     throw new Exception("Need to have one airvent");
-    }
-    tmp_vent = (block as IMyAirVent);
+   else if (block is IMyAirVent) {
+    tmp_vents.Add(block as IMyAirVent);
    }
-   else if ((block as IMyLightingBlock) != null)
+   else if (block is IMyLightingBlock)
     tmp_lights.Add(block as IMyLightingBlock);
    else {
     throw new Exception("Unexpected block: " + block.CustomName);
@@ -382,11 +400,11 @@ public class JAMS_Airlock : JAMS_Group {
   if (tmp_sensors.Count != 2) {
    throw new Exception("Need to have two sensors");
   }
-  if (tmp_vent == null) {
-   throw new Exception("No air vent found");
+  if (tmp_vents.Count == 0) {
+   throw new Exception("No air vents found");
   }
 
-  return new JAMS_Airlock(p, g.Name, tmp_vent, tmp_doors, tmp_lights, tmp_sensors, -1);
+  return new JAMS_Airlock(p, g.Name, tmp_vents, tmp_doors, tmp_lights, tmp_sensors);
  }
 
  public override bool finished() {
@@ -426,7 +444,7 @@ public class JAMS_Airlock : JAMS_Group {
  public override void reset() {
   close(doors[0]);
   close(doors[1]);
-  pressurize(vent);
+  pressurize(vents);
   turnOffLights(lights);
   sensor_idx = -1;
   last_pressure = -1;
@@ -451,15 +469,15 @@ public class JAMS_Airlock : JAMS_Group {
     bool pressureSet = false;
 
     if (sensor_idx == outer_sensor_idx || outer_sensor_idx == -1) {
-     depressurize(vent);
+     depressurize(vents);
 
-     if (vent.GetOxygenLevel() < 0.01) {
+     if (curOxygenLevel(vents) < 0.01) {
       pressureSet = true;
      }
     } else {
-     pressurize(vent);
+     pressurize(vents);
 
-     if (vent.GetOxygenLevel() > 0.9) {
+     if (curOxygenLevel(vents) > 0.9) {
       pressureSet = true;
      }
     }
@@ -467,7 +485,7 @@ public class JAMS_Airlock : JAMS_Group {
     // if the vent is already (de)pressurizing, wait until it's fully
     // (de)pressurized, or just go to next stage if it's stuck
     stuck = (elapsed.Seconds > 5 &&
-      vent.GetOxygenLevel() == last_pressure) && !pressureSet;
+      curOxygenLevel(vents) == last_pressure) && !pressureSet;
     if (pressureSet || stuck) {
      ready = true;
     }
@@ -499,11 +517,11 @@ public class JAMS_Airlock : JAMS_Group {
 
     if (door.OpenRatio != 0) {
      // if vent is depressurized, it's outer door
-     if (!vent.CanPressurize) {
-      depressurize(vent);
+     if (!canPressurize(vents)) {
+      depressurize(vents);
       outer_sensor_idx = sensor_idx;
      } else {
-      pressurize(vent);
+      pressurize(vents);
       outer_sensor_idx = (sensor_idx + 1) % 2;
      }
     }
@@ -525,9 +543,9 @@ public class JAMS_Airlock : JAMS_Group {
     if (door.OpenRatio == 0) {
      // if it was an outer door, pressurize
      if (sensor_idx == outer_sensor_idx) {
-      pressurize(vent);
+      pressurize(vents);
      } else {
-      depressurize(vent);
+      depressurize(vents);
      }
      // update sensor id
      sensor_idx = (sensor_idx + 1) % 2;
@@ -545,13 +563,13 @@ public class JAMS_Airlock : JAMS_Group {
     // wait until the room is fully pressurized/depressurized
     bool pressureSet = false;
     bool stuck = false;
-    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() < 0.01) {
+    if (sensor_idx == outer_sensor_idx && curOxygenLevel(vents) < 0.01) {
      pressureSet = true;
-    } else if (sensor_idx != outer_sensor_idx && vent.GetOxygenLevel() > 0.9) {
+    } else if (sensor_idx != outer_sensor_idx && curOxygenLevel(vents) > 0.9) {
      pressureSet = true;
     }
     stuck = (elapsed.Seconds > 5 &&
-      vent.GetOxygenLevel() == last_pressure) && !pressureSet;
+      curOxygenLevel(vents) == last_pressure) && !pressureSet;
     if (pressureSet || stuck) {
      var door_idx = sensor_to_door_idx[sensor_idx];
      var door = doors[door_idx];
@@ -624,10 +642,10 @@ public class JAMS_Airlock : JAMS_Group {
   }
   // all hail the mighty raptor!
  True:
-  last_pressure = vent.GetOxygenLevel();
+  last_pressure = curOxygenLevel(vents);
   return true;
  False:
-  last_pressure = vent.GetOxygenLevel();
+  last_pressure = curOxygenLevel(vents);
   return false;
  }
 
@@ -650,9 +668,9 @@ public class JAMS_Airlock : JAMS_Group {
 
  private List<IMyDoor> doors;
  private List<IMySensorBlock> sensors;
- private Dictionary<int,int> sensor_to_door_idx; // maps sensor idx to door idx
  private List<IMyLightingBlock> lights;
- private IMyAirVent vent;
+ private List<IMyAirVent> vents;
+ private Dictionary<int,int> sensor_to_door_idx; // maps sensor idx to door idx
  private int outer_sensor_idx; // -1 means we have no idea
  private State step_id;
  private int sensor_idx;
@@ -1001,7 +1019,7 @@ void s_processAirlocks() {
  var death_row = new List<int>();
 
  // process all airlocks that are currently active
- for (int i = 0; i < active_airlocks.Count; i++) {
+ for (int i = active_airlocks.Count - 1; i >= 0; i--) {
   var airlock = active_airlocks[i];
 
   while (airlock.advanceState()) {}
