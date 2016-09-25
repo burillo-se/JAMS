@@ -151,7 +151,7 @@ public abstract class JAMS_Group {
  public abstract void updateFromGroup(IMyBlockGroup g);
  public abstract void updateFromString(string s);
  public abstract bool tryActivate(); // check if group should be activated
- public abstract bool finished(); // check if state can be retired
+ public abstract bool finished(); // check if airlock can be retired
  protected abstract bool advanceStateImpl(); // move between states
  public abstract void reset(); // reset the airlock
  public abstract string toString(); // return a string representation of this group
@@ -415,7 +415,7 @@ public class JAMS_Airlock : JAMS_Group {
     if (sensor_idx == outer_sensor_idx || outer_sensor_idx == -1) {
      depressurize(vent);
 
-     if (vent.GetOxygenLevel() < 0.05) {
+     if (vent.GetOxygenLevel() < 0.01) {
       pressureSet = true;
      }
     } else {
@@ -503,7 +503,7 @@ public class JAMS_Airlock : JAMS_Group {
     // wait until the room is fully pressurized/depressurized
     bool pressureSet = false;
     bool stuck = false;
-    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() < 0.05) {
+    if (sensor_idx == outer_sensor_idx && vent.GetOxygenLevel() < 0.01) {
      pressureSet = true;
     } else if (sensor_idx != outer_sensor_idx && vent.GetOxygenLevel() > 0.9) {
      pressureSet = true;
