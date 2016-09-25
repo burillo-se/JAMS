@@ -201,6 +201,12 @@ public abstract class JAMS_Group {
   }
   p.turnOffLights(lights);
  }
+ protected IMySlimBlock slimBlock(IMyTerminalBlock block) {
+  if (p == null) {
+   return null;
+  }
+  return p.slimBlock(block);
+ }
 }
 
 public class JAMS_Airlock : JAMS_Group {
@@ -262,6 +268,9 @@ public class JAMS_Airlock : JAMS_Group {
   // we need find two doors and two sensors
   for (int i = 0; i < blocks.Count; i++) {
    var block = blocks[i];
+   if (slimBlock(block) == null) {
+    continue;
+   }
    if ((block as IMyDoor) != null)
     tmp_doors.Add(block as IMyDoor);
    else if ((block as IMySensorBlock) != null)
@@ -303,9 +312,16 @@ public class JAMS_Airlock : JAMS_Group {
   IMyAirVent tmp_vent = null;
   g.GetBlocks(blocks);
 
+  if (p == null) {
+   throw new Exception("Program is null");
+  }
+
   // we need find two doors and two sensors
   for (int i = 0; i < blocks.Count; i++) {
    var block = blocks[i];
+   if (p.slimBlock(block) == null) {
+    continue;
+   }
    if ((block as IMyDoor) != null)
     tmp_doors.Add(block as IMyDoor);
    else if ((block as IMySensorBlock) != null)
@@ -614,6 +630,9 @@ JAMS_Group createFromGroup(IMyBlockGroup g) {
  * Grid stuff
  */
 
+IMySlimBlock slimBlock(IMyTerminalBlock b) {
+ return b.CubeGrid.GetCubeBlock(b.Position);
+}
 
 // find which grid has a block at world_pos, excluding "self"
 IMyCubeGrid findGrid(Vector3D w_p, IMyCubeGrid self, List < IMyCubeGrid > grids) {
@@ -802,7 +821,9 @@ void updateAirlocks() {
    try {
     airlock.updateFromString(group_strs[j]);
     skipList.Add(j);
-   } catch (Exception) {}
+   } catch (Exception) {
+    // silently ignore errors
+   }
   }
  }
 }
