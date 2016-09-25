@@ -154,7 +154,7 @@ public abstract class JAMS_Group {
  public abstract bool finished(); // check if airlock can be retired
  protected abstract bool advanceStateImpl(); // move between states
  public abstract void reset(); // reset the airlock
- public abstract string toString(); // return a string representation of this group
+ public override abstract string ToString(); // return a string representation of this group
  public string name; // name of the group
  public Program p; // reference to our programmable block
  protected TimeSpan elapsed; // timestamp when the state has started
@@ -274,7 +274,7 @@ public class JAMS_Airlock : JAMS_Group {
   }
   return true;
  }
- public override string toString() {
+ public override string ToString() {
   return String.Format("Airlock:{0}:{1}", name, outer_sensor_idx);
  }
  public override void updateFromString(string s) {
@@ -869,9 +869,6 @@ void saveAirlocks() {
 }
 
 void updateAirlocks() {
- if (Storage == "") {
-  return;
- }
  string[] group_strs = Storage.Split(';');
  var skipList = new List<int>();
 
@@ -890,6 +887,8 @@ void updateAirlocks() {
    }
   }
  }
+ // clear out so that we don't have invalid information in Storage
+ Storage = "";
 }
 
 void pressurize(IMyAirVent av) {
