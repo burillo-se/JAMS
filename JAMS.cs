@@ -892,7 +892,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
 
  protected override bool advanceStateImpl() {
   // timeout
-  if (elapsed.Seconds > 20) {
+  if (elapsed.Seconds > 45) {
    setColor(lights, Color.Red);
    is_finished = true;
    goto False;
@@ -965,6 +965,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
     foreach (var sensor in sensors) {
      sensors_active |= sensor.IsActive;
     }
+    // no time limit on this, as flying around the hangar is supposed to be slow
     if (!sensors_active && elapsed.Seconds > 3) {
      nextState();
      setColor(lights, Color.Yellow);
