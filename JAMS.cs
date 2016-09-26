@@ -425,19 +425,6 @@ public class JAMS_Double_Airlock : JAMS_Group {
  }
 
  public override bool tryActivate() {
-  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
-   var sensor = sensors[s_idx];
-   if (sensor.IsActive) {
-    // activate the airlock
-    elapsed = TimeSpan.Zero;
-    step_id = State.STEP_INIT;
-    sensor_idx = s_idx;
-    last_pressure = -1;
-
-    setColor(lights, Color.Yellow);
-    return true;
-   }
-  }
   // check if any doors are active
   for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
    var door = doors[d_idx];
@@ -445,7 +432,20 @@ public class JAMS_Double_Airlock : JAMS_Group {
     // activate the override state
     elapsed = TimeSpan.Zero;
     step_id = State.STEP_DOOR_OVERRIDE;
-    last_pressure = -1;
+    last_pressure = curOxygenLevel(vents);
+
+    setColor(lights, Color.Yellow);
+    return true;
+   }
+  }
+  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
+   var sensor = sensors[s_idx];
+   if (sensor.IsActive) {
+    // activate the airlock
+    elapsed = TimeSpan.Zero;
+    step_id = State.STEP_INIT;
+    sensor_idx = s_idx;
+    last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
     return true;
@@ -666,7 +666,6 @@ public class JAMS_Double_Airlock : JAMS_Group {
  private void nextState() {
   step_id++;
   elapsed = TimeSpan.Zero;
-  last_pressure = -1;
  }
 
  enum State {
@@ -851,19 +850,6 @@ public class JAMS_Single_Airlock : JAMS_Group {
  }
 
  public override bool tryActivate() {
-  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
-   var sensor = sensors[s_idx];
-   if (sensor.IsActive) {
-    // activate the airlock
-    elapsed = TimeSpan.Zero;
-    step_id = State.STEP_DEPRESSURIZE;
-    active_sensor = sensor;
-    last_pressure = -1;
-
-    setColor(lights, Color.Yellow);
-    return true;
-   }
-  }
   // check if any doors are open
   for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
    var door = doors[d_idx];
@@ -871,7 +857,20 @@ public class JAMS_Single_Airlock : JAMS_Group {
     // close the doors
     elapsed = TimeSpan.Zero;
     step_id = State.STEP_CLOSE_DOOR;
-    last_pressure = -1;
+    last_pressure = curOxygenLevel(vents);
+
+    setColor(lights, Color.Yellow);
+    return true;
+   }
+  }
+  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
+   var sensor = sensors[s_idx];
+   if (sensor.IsActive) {
+    // activate the airlock
+    elapsed = TimeSpan.Zero;
+    step_id = State.STEP_DEPRESSURIZE;
+    active_sensor = sensor;
+    last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
     return true;
@@ -1026,7 +1025,6 @@ public class JAMS_Single_Airlock : JAMS_Group {
  private void nextState() {
   step_id++;
   elapsed = TimeSpan.Zero;
-  last_pressure = -1;
  }
 
  enum State {
