@@ -222,7 +222,7 @@ public abstract class JAMS_Group {
   }
   return p.blockExists(block);
  }
- static protected float curOxygenLevel(List<IMyAirVent> vents) {
+ protected float curOxygenLevel(List<IMyAirVent> vents) {
   float cur = 0, total = 0;
   foreach (var vent in vents) {
    total += 1;
@@ -233,7 +233,7 @@ public abstract class JAMS_Group {
   }
   return cur / total;
  }
- static protected bool canPressurize(List<IMyAirVent> vents) {
+ protected bool canPressurize(List<IMyAirVent> vents) {
   foreach (var vent in vents) {
    return vent.CanPressurize;
   }
@@ -337,41 +337,13 @@ public class JAMS_Double_Airlock : JAMS_Group {
  }
 
  public override void updateFromGroup(IMyBlockGroup g) {
-  var blocks = new List<IMyTerminalBlock>();
   var tmp_doors = new List<IMyDoor>();
   var tmp_sensors = new List<IMySensorBlock>();
   var tmp_lights = new List<IMyLightingBlock>();
   var tmp_vents = new List<IMyAirVent>();
-  g.GetBlocks(blocks);
 
-  // we need find two doors and two sensors
-  for (int i = 0; i < blocks.Count; i++) {
-   var block = blocks[i];
-   if (slimBlock(block) == null) {
-    continue;
-   }
-   if (block is IMyDoor)
-    tmp_doors.Add(block as IMyDoor);
-   else if (block is IMySensorBlock)
-    tmp_sensors.Add(block as IMySensorBlock);
-   else if (block is IMyAirVent) {
-    tmp_vents.Add(block as IMyAirVent);
-   }
-   else if (block is IMyLightingBlock)
-    tmp_lights.Add(block as IMyLightingBlock);
-   else {
-    throw new Exception("Unexpected block: " + block.CustomName);
-   }
-  }
-  if (tmp_doors.Count != 2) {
-   throw new Exception("Need to have two doors");
-  }
-  if (tmp_sensors.Count != 2) {
-   throw new Exception("Need to have two sensors");
-  }
-  if (tmp_vents.Count == 0) {
-   throw new Exception("No air vents found");
-  }
+  p.parseDoubleAirlock(g, tmp_vents, tmp_doors, tmp_lights, tmp_sensors);
+
   doors = tmp_doors;
   lights = tmp_lights;
   sensors = tmp_sensors;
@@ -380,46 +352,6 @@ public class JAMS_Double_Airlock : JAMS_Group {
   mapSensorsToDoors();
 
   reset();
- }
-
- public static JAMS_Group createFromGroup(IMyBlockGroup g, Program p) {
-  var blocks = new List<IMyTerminalBlock>();
-  var tmp_doors = new List<IMyDoor>();
-  var tmp_sensors = new List<IMySensorBlock>();
-  var tmp_lights = new List<IMyLightingBlock>();
-  var tmp_vents = new List<IMyAirVent>();
-  g.GetBlocks(blocks);
-
-  // we need find two doors and two sensors
-  for (int i = 0; i < blocks.Count; i++) {
-   var block = blocks[i];
-   if (p != null && p.slimBlock(block) == null) {
-    continue;
-   }
-   if (block is IMyDoor)
-    tmp_doors.Add(block as IMyDoor);
-   else if (block is IMySensorBlock)
-    tmp_sensors.Add(block as IMySensorBlock);
-   else if (block is IMyAirVent) {
-    tmp_vents.Add(block as IMyAirVent);
-   }
-   else if (block is IMyLightingBlock)
-    tmp_lights.Add(block as IMyLightingBlock);
-   else {
-    throw new Exception("Unexpected block: " + block.CustomName);
-   }
-  }
-  if (tmp_doors.Count != 2) {
-   throw new Exception("Need to have two doors");
-  }
-  if (tmp_sensors.Count != 2) {
-   throw new Exception("Need to have two sensors");
-  }
-  if (tmp_vents.Count == 0) {
-   throw new Exception("No air vents found");
-  }
-
-  return new JAMS_Double_Airlock(p, g.Name, tmp_vents, tmp_doors, tmp_lights, tmp_sensors);
  }
 
  public override bool finished() {
@@ -764,87 +696,19 @@ public class JAMS_Single_Airlock : JAMS_Group {
  }
 
  public override void updateFromGroup(IMyBlockGroup g) {
-  var blocks = new List<IMyTerminalBlock>();
   var tmp_doors = new List<IMyDoor>();
   var tmp_sensors = new List<IMySensorBlock>();
   var tmp_lights = new List<IMyLightingBlock>();
   var tmp_vents = new List<IMyAirVent>();
-  g.GetBlocks(blocks);
 
-  // we need at least one sensor, at least one vent and at least one door
-  for (int i = 0; i < blocks.Count; i++) {
-   var block = blocks[i];
-   if (slimBlock(block) == null) {
-    continue;
-   }
-   if (block is IMyDoor)
-    tmp_doors.Add(block as IMyDoor);
-   else if (block is IMySensorBlock)
-    tmp_sensors.Add(block as IMySensorBlock);
-   else if (block is IMyAirVent) {
-    tmp_vents.Add(block as IMyAirVent);
-   }
-   else if (block is IMyLightingBlock)
-    tmp_lights.Add(block as IMyLightingBlock);
-   else {
-    throw new Exception("Unexpected block: " + block.CustomName);
-   }
-  }
-  if (tmp_doors.Count == 0) {
-   throw new Exception("No doors found");
-  }
-  if (tmp_sensors.Count == 0) {
-   throw new Exception("No sensors found");
-  }
-  if (tmp_vents.Count == 0) {
-   throw new Exception("No air vents found");
-  }
+  p.parseSingleAirlock(g, tmp_vents, tmp_doors, tmp_lights, tmp_sensors);
+
   doors = tmp_doors;
   lights = tmp_lights;
   sensors = tmp_sensors;
   vents = tmp_vents;
 
   reset();
- }
-
- public static JAMS_Group createFromGroup(IMyBlockGroup g, Program p) {
-  var blocks = new List<IMyTerminalBlock>();
-  var tmp_doors = new List<IMyDoor>();
-  var tmp_sensors = new List<IMySensorBlock>();
-  var tmp_lights = new List<IMyLightingBlock>();
-  var tmp_vents = new List<IMyAirVent>();
-  g.GetBlocks(blocks);
-
-  // we need at least one sensor, at least one vent and at least one door
-  for (int i = 0; i < blocks.Count; i++) {
-   var block = blocks[i];
-   if (p != null && p.slimBlock(block) == null) {
-    continue;
-   }
-   if (block is IMyDoor)
-    tmp_doors.Add(block as IMyDoor);
-   else if (block is IMySensorBlock)
-    tmp_sensors.Add(block as IMySensorBlock);
-   else if (block is IMyAirVent) {
-    tmp_vents.Add(block as IMyAirVent);
-   }
-   else if (block is IMyLightingBlock)
-    tmp_lights.Add(block as IMyLightingBlock);
-   else {
-    throw new Exception("Unexpected block: " + block.CustomName);
-   }
-  }
-  if (tmp_doors.Count == 0) {
-   throw new Exception("No doors found");
-  }
-  if (tmp_sensors.Count == 0) {
-   throw new Exception("No sensors found");
-  }
-  if (tmp_vents.Count == 0) {
-   throw new Exception("No air vents found");
-  }
-
-  return new JAMS_Single_Airlock(p, g.Name, tmp_vents, tmp_doors, tmp_lights, tmp_sensors);
  }
 
  public override bool finished() {
@@ -1048,13 +912,88 @@ public class JAMS_Single_Airlock : JAMS_Group {
  private bool is_finished;
 }
 
+public void parseAirlock(IMyBlockGroup g, List<IMyAirVent> vents,
+                         List<IMyDoor> doors, List<IMyLightingBlock> lights,
+                         List<IMySensorBlock> sensors) {
+ var blocks = new List<IMyTerminalBlock>();
+ g.GetBlocks(blocks);
+
+ // we need find two doors and two sensors
+ for (int i = 0; i < blocks.Count; i++) {
+  var block = blocks[i];
+  if (slimBlock(block) == null) {
+   continue;
+  }
+  if (block is IMyDoor)
+   doors.Add(block as IMyDoor);
+  else if (block is IMySensorBlock)
+   sensors.Add(block as IMySensorBlock);
+  else if (block is IMyAirVent) {
+   vents.Add(block as IMyAirVent);
+  }
+  else if (block is IMyLightingBlock)
+   lights.Add(block as IMyLightingBlock);
+  else {
+   throw new Exception("Unexpected block: " + block.CustomName);
+  }
+ }
+}
+
+public void parseDoubleAirlock(IMyBlockGroup g, List<IMyAirVent> vents,
+                               List<IMyDoor> doors, List<IMyLightingBlock> lights,
+                               List<IMySensorBlock> sensors) {
+ parseAirlock(g, vents, doors, lights, sensors);
+ if (doors.Count != 2) {
+  throw new Exception("Need to have two doors");
+ }
+ if (sensors.Count != 2) {
+  throw new Exception("Need to have two sensors");
+ }
+ if (vents.Count == 0) {
+  throw new Exception("No air vents found");
+ }
+}
+
+public void parseSingleAirlock(IMyBlockGroup g, List<IMyAirVent> vents,
+                               List<IMyDoor> doors, List<IMyLightingBlock> lights,
+                               List<IMySensorBlock> sensors) {
+ parseAirlock(g, vents, doors, lights, sensors);
+ if (doors.Count == 0) {
+  throw new Exception("No doors found");
+ }
+ if (sensors.Count == 0) {
+  throw new Exception("No sensors found");
+ }
+ if (vents.Count == 0) {
+  throw new Exception("No air vents found");
+ }
+}
+
+public JAMS_Group createDoubleFromGroup(IMyBlockGroup g, Program p) {
+ var vents = new List<IMyAirVent>();
+ var doors = new List<IMyDoor>();
+ var lights = new List<IMyLightingBlock>();
+ var sensors = new List<IMySensorBlock>();
+ parseDoubleAirlock(g, vents, doors, lights, sensors);
+ return new JAMS_Double_Airlock(p, g.Name, vents, doors, lights, sensors);
+}
+
+public JAMS_Group createSingleFromGroup(IMyBlockGroup g, Program p) {
+ var vents = new List<IMyAirVent>();
+ var doors = new List<IMyDoor>();
+ var lights = new List<IMyLightingBlock>();
+ var sensors = new List<IMySensorBlock>();
+ parseSingleAirlock(g, vents, doors, lights, sensors);
+ return new JAMS_Single_Airlock(p, g.Name, vents, doors, lights, sensors);
+}
+
 JAMS_Group createFromGroup(IMyBlockGroup g) {
  try {
-  return JAMS_Double_Airlock.createFromGroup(g, this);
+  return createDoubleFromGroup(g, this);
  } catch (Exception) {
  }
  try {
-  return JAMS_Single_Airlock.createFromGroup(g, this);
+  return createSingleFromGroup(g, this);
  } catch (Exception) {
  }
  return null;
