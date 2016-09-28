@@ -1,11 +1,13 @@
 /*
- * JAMS v1.1
+ * JAMS v1.11beta1
  *
  * (JAMS Airlock Management System)
  *
  * Published under "do whatever you want with it" license (aka public domain).
  *
  */
+
+const string VERSION = "1.11beta1";
 
 public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
 public List<JAMS_Group> airlocks = new List<JAMS_Group>();
@@ -1485,6 +1487,7 @@ public Program() {
 }
 
 void Main() {
+ Echo(String.Format("JAMS version {0}", VERSION));
  int num_states = 0;
  cycle_count = 0;
  validateAirlocks();
