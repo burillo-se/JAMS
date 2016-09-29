@@ -151,8 +151,7 @@ public class Graph < T > {
 
 public abstract class JAMS_Group {
  public abstract void updateFromGroup(IMyBlockGroup g);
- public abstract bool isValidUpdateString(string s);
- public abstract void updateFromString(string s);
+ public abstract bool updateFromString(string s);
  public abstract bool tryActivate(); // check if group should be activated
  public abstract bool finished(); // check if airlock can be retired
  protected abstract bool advanceStateImpl(); // move between states
@@ -163,6 +162,9 @@ public abstract class JAMS_Group {
  protected TimeSpan elapsed; // timestamp when the state has started
  public abstract bool isValid(); // check if all blocks in the airlock are still valid
  public bool advanceState() {
+  if (finished()) {
+   return false;
+  }
   bool result = advanceStateImpl();
   if (!result) {
    elapsed += p.Runtime.TimeSinceLastRun;
@@ -278,28 +280,54 @@ public class JAMS_Double_Airlock : JAMS_Group {
   return true;
  }
  public override string ToString() {
-  return String.Format("Double:{0}:{1}", name, outer_sensor_idx);
+  return String.Format("Double#{0}#{1}#{2}#{3}#{4:0.00}#{5}#{6}", name,
+                       outer_sensor_idx, sensor_idx, (int) step_id,
+                       last_pressure, is_finished, elapsed);
  }
- public override bool isValidUpdateString(string s) {
-  string[] strs = s.Split(':');
-  if (strs.Length != 3) {
+ public override bool updateFromString(string s) {
+  string[] strs = s.Split('#');
+  if (strs.Length != 8) {
    return false;
   }
-  // if this isn't our type of airlock, bail out
   if (strs[0] != "Double") {
    return false;
   }
-  if (name != strs[1]) {
+  if (strs[1] != name) {
    return false;
   }
-  return true;
- }
- public override void updateFromString(string s) {
-  string[] strs = s.Split(':');
-  int idx = Convert.ToInt32(strs[2]);
-  if (idx != -1) {
-   outer_sensor_idx = idx;
+  int tmp_outer;
+  if (!Int32.TryParse(strs[2], out tmp_outer) || tmp_outer < -1 || tmp_outer > 1) {
+   throw new Exception("Wrong outer sensor idx");
   }
+  int tmp_sensor;
+  if (!Int32.TryParse(strs[3], out tmp_sensor) || tmp_sensor < -1 || tmp_sensor > 1) {
+   throw new Exception("Wrong sensor idx");
+  }
+  int tmp_state;
+  if (!Int32.TryParse(strs[4], out tmp_state) || tmp_state < 0 ||
+      tmp_state > (int) State.STEP_DOOR_OVERRIDE) {
+   throw new Exception("Wrong state");
+  }
+  float tmp_pressure;
+  if (!Single.TryParse(strs[5], out tmp_pressure) || tmp_pressure < -1 ||
+      tmp_pressure > 1) {
+   throw new Exception("Wrong last pressure");
+  }
+  bool tmp_finished;
+  if (!Boolean.TryParse(strs[6], out tmp_finished)) {
+   throw new Exception("Wrong finished");
+  }
+  TimeSpan tmp_elapsed;
+  if (!TimeSpan.TryParse(strs[7], out tmp_elapsed)) {
+   throw new Exception("Wrong elapsed");
+  }
+  outer_sensor_idx = tmp_outer;
+  sensor_idx = tmp_sensor;
+  step_id = (State) tmp_state;
+  last_pressure = tmp_pressure;
+  is_finished = tmp_finished;
+  elapsed = tmp_elapsed;
+  return true;
  }
  private void mapSensorsToDoors() {
    // figure out which sensor likely belongs to which door
@@ -350,8 +378,6 @@ public class JAMS_Double_Airlock : JAMS_Group {
   vents = tmp_vents;
 
   mapSensorsToDoors();
-
-  reset();
  }
 
  public override bool finished() {
@@ -369,6 +395,7 @@ public class JAMS_Double_Airlock : JAMS_Group {
     last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
+    is_finished = false;
     return true;
    }
   }
@@ -382,6 +409,7 @@ public class JAMS_Double_Airlock : JAMS_Group {
     last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
+    is_finished = false;
     return true;
    }
   }
@@ -395,7 +423,7 @@ public class JAMS_Double_Airlock : JAMS_Group {
   turnOffLights(lights);
   sensor_idx = -1;
   last_pressure = -1;
-  is_finished = false;
+  is_finished = true;
  }
 
  protected override bool advanceStateImpl() {
@@ -662,12 +690,14 @@ public class JAMS_Single_Airlock : JAMS_Group {
   return true;
  }
  public override string ToString() {
-  return String.Format("Single:{0}", name);
+  var sensor_idx = active_sensor == null ? -1 : sensors.IndexOf(active_sensor);
+  return String.Format("Single#{0}#{1}#{2}#{3:0.00}#{4}#{5}", name,
+                       sensor_idx, (int) step_id,
+                       last_pressure, is_finished, elapsed);
  }
- public override bool isValidUpdateString(string s) {
-  // check if the signature matches
-  var strs = s.Split(':');
-  if (strs.Length != 2) {
+ public override bool updateFromString(string s) {
+  string[] strs = s.Split('#');
+  if (strs.Length != 7) {
    return false;
   }
   if (strs[0] != "Single") {
@@ -676,10 +706,36 @@ public class JAMS_Single_Airlock : JAMS_Group {
   if (strs[1] != name) {
    return false;
   }
+  int tmp_sensor;
+  if (!Int32.TryParse(strs[2], out tmp_sensor) || tmp_sensor < -1 || tmp_sensor > 1) {
+   throw new Exception("Wrong sensor idx");
+  }
+  int tmp_state;
+  if (!Int32.TryParse(strs[3], out tmp_state) || tmp_state < 0 ||
+      tmp_state > (int) State.STEP_PRESSURIZE) {
+   throw new Exception("Wrong state");
+  }
+  float tmp_pressure;
+  if (!Single.TryParse(strs[4], out tmp_pressure) || tmp_pressure < -1 ||
+      tmp_state > 1) {
+   throw new Exception("Wrong last pressure");
+  }
+  bool tmp_finished;
+  if (!Boolean.TryParse(strs[5], out tmp_finished)) {
+   throw new Exception("Wrong finished");
+  }
+  TimeSpan tmp_elapsed;
+  if (!TimeSpan.TryParse(strs[6], out tmp_elapsed)) {
+   throw new Exception("Wrong elapsed");
+  }
+  if (tmp_sensor != -1) {
+   active_sensor = sensors[tmp_sensor];
+  }
+  step_id = (State) tmp_state;
+  last_pressure = tmp_pressure;
+  is_finished = tmp_finished;
+  elapsed = tmp_elapsed;
   return true;
- }
- public override void updateFromString(string s) {
-  // we don't need to update anything as this door is stateless
  }
 
  public JAMS_Single_Airlock(Program p_in, string name_in, List<IMyAirVent> vents_in,
@@ -707,8 +763,6 @@ public class JAMS_Single_Airlock : JAMS_Group {
   lights = tmp_lights;
   sensors = tmp_sensors;
   vents = tmp_vents;
-
-  reset();
  }
 
  public override bool finished() {
@@ -726,6 +780,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
     last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
+    is_finished = false;
     return true;
    }
   }
@@ -739,6 +794,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
     last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
+    is_finished = false;
     return true;
    }
   }
@@ -753,7 +809,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
   turnOffLights(lights);
   active_sensor = null;
   last_pressure = -1;
-  is_finished = false;
+  is_finished = true;
  }
 
  protected override bool advanceStateImpl() {
@@ -1195,8 +1251,11 @@ void updateAirlocks() {
     continue;
    }
    try {
-    if (airlock.isValidUpdateString(group_strs[j])) {
-     airlock.updateFromString(group_strs[j]);
+    if (airlock.updateFromString(group_strs[j])) {
+     if (!airlock.finished()) {
+      active_airlocks.Add(airlock);
+      throw new Exception();
+     }
      skipList.Add(j);
     }
    } catch (Exception) {
