@@ -774,9 +774,9 @@ public class JAMS_Single_Airlock : JAMS_Group {
   for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
    var door = doors[d_idx];
    if (door.Open) {
-    // close the doors
+    // wait for hangar to clear and close the doors
     elapsed = TimeSpan.Zero;
-    step_id = State.STEP_CLOSE_DOOR;
+    step_id = State.STEP_WAIT_FOR_EXIT;
     last_pressure = curOxygenLevel(vents);
 
     setColor(lights, Color.Yellow);
@@ -813,13 +813,6 @@ public class JAMS_Single_Airlock : JAMS_Group {
  }
 
  protected override bool advanceStateImpl() {
-  // timeout
-  if (elapsed.Seconds > 45) {
-   setColor(lights, Color.Red);
-   is_finished = true;
-   goto False;
-  }
-
   // decide what to do
   switch (step_id) {
    case State.STEP_DEPRESSURIZE:
