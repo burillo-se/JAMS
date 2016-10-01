@@ -1,5 +1,5 @@
 /*
- * JAMS v1.11beta2
+ * JAMS v1.11
  *
  * (JAMS Airlock Management System)
  *
@@ -7,7 +7,7 @@
  *
  */
 
-const string VERSION = "1.11beta2";
+const string VERSION = "1.11";
 
 public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
 public List<JAMS_Group> airlocks = new List<JAMS_Group>();
