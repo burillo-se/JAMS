@@ -1,5 +1,5 @@
 /*
- * JAMS v1.11beta1
+ * JAMS v1.11
  *
  * (JAMS Airlock Management System)
  *
@@ -7,7 +7,7 @@
  *
  */
 
-const string VERSION = "1.11beta1";
+const string VERSION = "1.11";
 
 public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
 public List<JAMS_Group> airlocks = new List<JAMS_Group>();
@@ -287,6 +287,22 @@ public class JAMS_Double_Airlock : JAMS_Group {
  public override bool updateFromString(string s) {
   string[] strs = s.Split('#');
   if (strs.Length != 8) {
+   // backwards compatibility
+   strs = s.Split(':');
+   if (strs.Length != 3) {
+    return false;
+   }
+   if (strs[0] != "Double") {
+    return false;
+   }
+   if (strs[1] != name) {
+    return false;
+   }
+   int outer;
+   if (Int32.TryParse(strs[2], out outer) && outer >= -1 && outer <= 1) {
+    outer_sensor_idx = outer;
+    return true;
+   }
    return false;
   }
   if (strs[0] != "Double") {
@@ -784,19 +800,16 @@ public class JAMS_Single_Airlock : JAMS_Group {
     return true;
    }
   }
-  for (int s_idx = 0; s_idx < sensors.Count; s_idx++) {
-   var sensor = sensors[s_idx];
-   if (sensor.IsActive) {
-    // activate the airlock
-    elapsed = TimeSpan.Zero;
-    step_id = State.STEP_DEPRESSURIZE;
-    active_sensor = sensor;
-    last_pressure = curOxygenLevel(vents);
-
-    setColor(lights, Color.Yellow);
-    is_finished = false;
-    return true;
-   }
+  var sensor = getActiveSensor();
+  if (sensor != null) {
+   // activate the airlock
+   elapsed = TimeSpan.Zero;
+   step_id = State.STEP_DEPRESSURIZE;
+   active_sensor = sensor;
+   last_pressure = curOxygenLevel(vents);
+   setColor(lights, Color.Yellow);
+   is_finished = false;
+   return true;
   }
   return false;
  }
@@ -876,12 +889,8 @@ public class JAMS_Single_Airlock : JAMS_Group {
    }
    case State.STEP_WAIT_FOR_EXIT:
    {
-    bool sensors_active = false;
-    foreach (var sensor in sensors) {
-     sensors_active |= sensor.IsActive;
-    }
     // no time limit on this, as flying around the hangar is supposed to be slow
-    if (!sensors_active && elapsed.Seconds > 3) {
+    if (getActiveSensor() == null && elapsed.Seconds > 3) {
      nextState();
      setColor(lights, Color.Yellow);
      foreach (var door in doors) {
@@ -898,6 +907,15 @@ public class JAMS_Single_Airlock : JAMS_Group {
     bool doors_not_fully_closed = false;
     foreach (var door in doors) {
      doors_not_fully_closed |= (door.OpenRatio != 0);
+    }
+
+    var sensor = getActiveSensor();
+    if (sensor != null) {
+     active_sensor = sensor;
+     step_id = State.STEP_DEPRESSURIZE;
+     last_pressure = curOxygenLevel(vents);
+     setColor(lights, Color.Yellow);
+     goto True;
     }
 
     if (!doors_not_fully_closed) {
@@ -941,6 +959,15 @@ public class JAMS_Single_Airlock : JAMS_Group {
  private void nextState() {
   step_id++;
   elapsed = TimeSpan.Zero;
+ }
+
+ private IMySensorBlock getActiveSensor() {
+  foreach (var sensor in sensors) {
+   if (sensor.IsActive) {
+    return sensor;
+   }
+  }
+  return null;
  }
 
  enum State {
@@ -1382,6 +1409,8 @@ void s_checkAirlocks() {
   }
   if (airlock.tryActivate()) {
    active_airlocks.Add(airlock);
+  } else {
+   airlock.reset();
   }
  }
 }
