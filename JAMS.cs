@@ -1,5 +1,5 @@
 /*
- * JAMS v1.11
+ * JAMS v1.12beta1
  *
  * (JAMS Airlock Management System)
  *
@@ -7,7 +7,7 @@
  *
  */
 
-const string VERSION = "1.11";
+const string VERSION = "1.12beta1";
 
 public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
 public List<JAMS_Group> airlocks = new List<JAMS_Group>();
@@ -1291,29 +1291,37 @@ void updateAirlocks() {
 }
 
 void pressurize(IMyAirVent av) {
- av.ApplyAction("Depressurize_Off");
- av.ApplyAction("Depressurize_On");
- av.ApplyAction("Depressurize_Off");
+ if (av.IsDepressurizing) {
+  av.ApplyAction("Depressurize_Off");
+  av.ApplyAction("Depressurize_On");
+  av.ApplyAction("Depressurize_Off");
+ }
 }
 
 void depressurize(IMyAirVent av) {
- av.ApplyAction("Depressurize_On");
- av.ApplyAction("Depressurize_Off");
- av.ApplyAction("Depressurize_On");
+ if (!av.IsDepressurizing) {
+  av.ApplyAction("Depressurize_On");
+  av.ApplyAction("Depressurize_Off");
+  av.ApplyAction("Depressurize_On");
+ }
 }
 
 void open(IMyDoor door) {
  door.ApplyAction("OnOff_On");
- door.ApplyAction("Open_On");
- door.ApplyAction("Open_Off");
- door.ApplyAction("Open_On");
+ if (!door.Open) {
+  door.ApplyAction("Open_On");
+  door.ApplyAction("Open_Off");
+  door.ApplyAction("Open_On");
+ }
 }
 
 void close(IMyDoor door) {
  door.ApplyAction("OnOff_On");
- door.ApplyAction("Open_Off");
- door.ApplyAction("Open_On");
- door.ApplyAction("Open_Off");
+ if (door.Open) {
+  door.ApplyAction("Open_Off");
+  door.ApplyAction("Open_On");
+  door.ApplyAction("Open_Off");
+ }
 }
 
 void setColor(List<IMyLightingBlock> lights, Color c) {
