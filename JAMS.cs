@@ -1,5 +1,5 @@
 /*
- * JAMS v1.12beta1
+ * JAMS v1.12
  *
  * (JAMS Airlock Management System)
  *
@@ -404,7 +404,7 @@ public class JAMS_Double_Airlock : JAMS_Group {
   // check if any doors are active
   for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
    var door = doors[d_idx];
-   if (door.Open) {
+   if (door.Status == DoorStatus.Open || door.Status == DoorStatus.Opening) {
     // activate the override state
     elapsed = TimeSpan.Zero;
     step_id = State.STEP_DOOR_OVERRIDE;
@@ -789,7 +789,7 @@ public class JAMS_Single_Airlock : JAMS_Group {
   // check if any doors are open
   for (int d_idx = 0; d_idx < doors.Count; d_idx++) {
    var door = doors[d_idx];
-   if (door.Open) {
+   if (door.Status == DoorStatus.Opening || door.Status == DoorStatus.Open) {
     // wait for hangar to clear and close the doors
     elapsed = TimeSpan.Zero;
     step_id = State.STEP_WAIT_FOR_EXIT;
@@ -1102,7 +1102,7 @@ IMyCubeGrid findGrid(Vector3D w_p, IMyCubeGrid self, List < IMyCubeGrid > grids)
 }
 
 IMyCubeGrid getConnectedGrid(IMyShipConnector c) {
- if (!c.IsConnected) {
+ if (c.Status != MyShipConnectorStatus.Connected) {
   return null;
  }
  // skip connectors connecting to the same grid
@@ -1224,18 +1224,6 @@ List < IMyCubeGrid > getLocalGrids(bool force_update = false) {
  return local_grids;
 }
 
-void showOnHud(IMyTerminalBlock b) {
- if (b.GetProperty("ShowOnHUD") != null) {
-  b.SetValue("ShowOnHUD", true);
- }
-}
-
-void hideFromHud(IMyTerminalBlock b) {
- if (b.GetProperty("ShowOnHUD") != null) {
-  b.SetValue("ShowOnHUD", false);
- }
-}
-
 public void filterLocalGrid(List < IMyTerminalBlock > blocks) {
  var grids = getLocalGrids();
  for (int i = blocks.Count - 1; i >= 0; i--) {
@@ -1291,56 +1279,55 @@ void updateAirlocks() {
 }
 
 void pressurize(IMyAirVent av) {
- if (av.IsDepressurizing) {
-  av.ApplyAction("Depressurize_Off");
-  av.ApplyAction("Depressurize_On");
-  av.ApplyAction("Depressurize_Off");
+ if (av.Status != VentStatus.Pressurizing && av.Status != VentStatus.Pressurized) {
+  av.Depressurize = false;
+  av.Depressurize = true;
+  av.Depressurize = false;
  }
 }
 
 void depressurize(IMyAirVent av) {
- if (!av.IsDepressurizing) {
-  av.ApplyAction("Depressurize_On");
-  av.ApplyAction("Depressurize_Off");
-  av.ApplyAction("Depressurize_On");
+ if (av.Status == VentStatus.Pressurizing || av.Status == VentStatus.Pressurized) {
+  av.Depressurize = true;
+  av.Depressurize = false;
+  av.Depressurize = true;
  }
 }
 
 void open(IMyDoor door) {
- door.ApplyAction("OnOff_On");
- if (!door.Open) {
-  door.ApplyAction("Open_On");
-  door.ApplyAction("Open_Off");
-  door.ApplyAction("Open_On");
+ door.Enabled = true;
+ if (door.Status != DoorStatus.Open && door.Status != DoorStatus.Opening) {
+  door.OpenDoor();
+  door.CloseDoor();
+  door.OpenDoor();
  }
 }
 
 void close(IMyDoor door) {
- door.ApplyAction("OnOff_On");
- if (door.Open) {
-  door.ApplyAction("Open_Off");
-  door.ApplyAction("Open_On");
-  door.ApplyAction("Open_Off");
+ door.Enabled = true;
+ if (door.Status == DoorStatus.Open || door.Status == DoorStatus.Opening) {
+  door.CloseDoor();
+  door.OpenDoor();
+  door.CloseDoor();
  }
 }
 
 void setColor(List<IMyLightingBlock> lights, Color c) {
  for (int i = 0; i < lights.Count; i++) {
   var light = lights[i];
-  if (light.GetValue < Color > ("Color").Equals(c) && light.Enabled) {
+  if (light.Color.Equals(c) && light.Enabled) {
    continue;
   }
-  light.SetValue("Color", c);
+  light.Color = c;
   // make sure we switch the color of the texture as well
-  light.ApplyAction("OnOff_Off");
-  light.ApplyAction("OnOff_On");
+  light.Enabled = false;
+  light.Enabled = true;
  }
 }
 
 void turnOffLights(List<IMyLightingBlock> lights) {
  for (int i = 0; i < lights.Count; i++) {
-  var light = lights[i];
-  light.ApplyAction("OnOff_Off");
+  lights[i].Enabled = false;
  }
 }
 
@@ -1352,13 +1339,13 @@ void validateAirlocks() {
    active_airlocks.RemoveAt(i);
   }
  }
-  for (int i = airlocks.Count - 1; i >= 0; i--) {
-   var airlock = airlocks[i];
-   if (!airlock.isValid()) {
-    // remove this airlock from existence
-    airlocks.RemoveAt(i);
-   }
+ for (int i = airlocks.Count - 1; i >= 0; i--) {
+  var airlock = airlocks[i];
+  if (!airlock.isValid()) {
+   // remove this airlock from existence
+   airlocks.RemoveAt(i);
   }
+ }
 }
 
 void s_refreshAirlocks() {
@@ -1501,8 +1488,8 @@ public Program() {
   s_checkAirlocks,
   s_processAirlocks,
  };
- Me.SetCustomName("JAMS CPU");
- hideFromHud(Me);
+ Me.CustomName = "JAMS CPU";
+ Me.ShowOnHUD = false;
 
  // do an out of cycle refresh, because we need to find airlocks that saved to Storage
  s_refreshGrids();
@@ -1523,8 +1510,8 @@ void Main() {
   try {
    states[current_state]();
   } catch (Exception e) {
-   Me.SetCustomName("JAMS Exception");
-   showOnHud(Me);
+   Me.CustomName = "JAMS Exception";
+   Me.ShowOnHUD = true;
    Echo(e.StackTrace);
    throw;
   }
