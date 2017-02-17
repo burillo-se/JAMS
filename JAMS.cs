@@ -7,7 +7,7 @@
  *
  */
 
-const string VERSION = "1.12beta1";
+const string VERSION = "1.12";
 
 public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
 public List<JAMS_Group> airlocks = new List<JAMS_Group>();
