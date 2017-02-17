@@ -1279,19 +1279,15 @@ void updateAirlocks() {
 }
 
 void pressurize(IMyAirVent av) {
- if (av.Status != VentStatus.Pressurizing && av.Status != VentStatus.Pressurized) {
-  av.Depressurize = false;
-  av.Depressurize = true;
-  av.Depressurize = false;
- }
+ av.Depressurize = false;
+ av.Depressurize = true;
+ av.Depressurize = false;
 }
 
 void depressurize(IMyAirVent av) {
- if (av.Status == VentStatus.Pressurizing || av.Status == VentStatus.Pressurized) {
-  av.Depressurize = true;
-  av.Depressurize = false;
-  av.Depressurize = true;
- }
+ av.Depressurize = true;
+ av.Depressurize = false;
+ av.Depressurize = true;
 }
 
 void open(IMyDoor door) {
