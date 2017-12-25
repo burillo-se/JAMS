@@ -1871,7 +1871,14 @@ namespace SpaceEngineers
             // if we're activated by a timer, go into timer mode and do not ever
             // update the UpdateFrequency
             if (ut == UpdateType.Trigger)
+            {
                 timer_mode = true;
+                Runtime.UpdateFrequency = UpdateFrequency.None;
+            }
+            else {
+                timer_mode = false;
+                Runtime.UpdateFrequency = UpdateFrequency.Update100;
+            }
 
             validateAirlocks();
             do
