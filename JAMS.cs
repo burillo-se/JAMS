@@ -565,11 +565,24 @@ namespace SpaceEngineers
 
             protected override bool advanceStateImpl()
             {
-                // timeout
+                // timeout - force reset
                 if (elapsed.Seconds > 10)
                 {
+                    bool has_open_doors = false;
                     setColor(lights, Color.Red);
-                    is_finished = true;
+                    foreach (var door in doors)
+                    {
+                        if (door.OpenRatio != 0)
+                        {
+                            has_open_doors = true;
+                            close(door);
+                        }
+                    }
+                    if (!has_open_doors)
+                    {
+                        is_finished = true;
+                        reset();
+                    }
                     goto False;
                 }
 
