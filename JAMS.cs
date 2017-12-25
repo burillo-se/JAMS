@@ -1712,20 +1712,30 @@ namespace SpaceEngineers
 
         void s_checkAirlocks()
         {
+            int n_active = 0;
             foreach (var airlock in airlocks)
             {
                 if (active_airlocks.Contains(airlock))
                 {
+                    n_active++;
                     continue;
                 }
                 if (airlock.tryActivate())
                 {
+                    n_active++;
                     active_airlocks.Add(airlock);
                 }
                 else
                 {
                     airlock.reset();
                 }
+            }
+            if (n_active > 0)
+            {
+                Runtime.UpdateFrequency = UpdateFrequency.Update10;
+            } else
+            {
+                Runtime.UpdateFrequency = UpdateFrequency.Update100;
             }
         }
 
@@ -1811,6 +1821,7 @@ namespace SpaceEngineers
 
         public Program()
         {
+            Runtime.UpdateFrequency = UpdateFrequency.Update100;
             states = new Action[] {
               s_refreshGrids,
               s_refreshAirlocks,
