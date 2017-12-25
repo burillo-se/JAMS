@@ -556,7 +556,7 @@ namespace SpaceEngineers
             {
                 close(doors[0]);
                 close(doors[1]);
-                pressurize(vents);
+                depressurize(vents);
                 turnOffLights(lights);
                 sensor_idx = -1;
                 last_pressure = -1;
