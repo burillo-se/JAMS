@@ -606,7 +606,7 @@ namespace SpaceEngineers
                             // if the vent is already (de)pressurizing, wait until it's fully
                             // (de)pressurized, or just go to next stage if it's stuck
                             stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -709,7 +709,7 @@ namespace SpaceEngineers
                                 pressureSet = true;
                             }
                             stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 var door_idx = sensor_to_door_idx[sensor_idx];
@@ -1053,7 +1053,7 @@ namespace SpaceEngineers
                             // if the vent is already depressurizing, wait until it's fully
                             // depressurized, or just go to next stage if it's stuck
                             stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -1152,7 +1152,7 @@ namespace SpaceEngineers
                                 pressureSet = true;
                             }
                             stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 if (stuck)
