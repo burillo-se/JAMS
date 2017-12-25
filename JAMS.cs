@@ -43,6 +43,8 @@ namespace SpaceEngineers
 
         int current_state;
 
+        bool timer_mode = false;
+
         /*
          * Graph-based grid locality code transplanted from BARABAS.
          */
@@ -1730,6 +1732,9 @@ namespace SpaceEngineers
                     airlock.reset();
                 }
             }
+            // if we're in timer mode, don't change UpdateFrequency
+            if (timer_mode)
+                return;
             if (n_active > 0)
             {
                 Runtime.UpdateFrequency = UpdateFrequency.Update10;
@@ -1841,11 +1846,17 @@ namespace SpaceEngineers
             state_cycle_counts = new int[states.Length];
         }
 
-        void Main()
+        void Main(string arg, UpdateType ut)
         {
             Echo(String.Format("JAMS version {0}", VERSION));
             int num_states = 0;
             cycle_count = 0;
+
+            // if we're activated by a timer, go into timer mode and do not ever
+            // update the UpdateFrequency
+            if (ut == UpdateType.Trigger)
+                timer_mode = true;
+
             validateAirlocks();
             do
             {
