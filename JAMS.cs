@@ -1809,7 +1809,7 @@ namespace SpaceEngineers
             current_state = next_state;
             cycle_count = cur_i;
 
-            return hasHeadroom;
+            return hasHeadroom && next_state != 0;
         }
 
         void ILReport(int states_executed)
