@@ -24,7 +24,7 @@ namespace SpaceEngineers
 #endif
 #endregion
         /*
-         * JAMS v1.12
+         * JAMS v1.13
          *
          * (JAMS Airlock Management System)
          *
@@ -32,7 +32,7 @@ namespace SpaceEngineers
          *
          */
 
-        const string VERSION = "1.12";
+        const string VERSION = "1.13";
 
         public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
         public List<JAMS_Group> airlocks = new List<JAMS_Group>();
