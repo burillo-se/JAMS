@@ -45,6 +45,9 @@ namespace SpaceEngineers
 
         bool timer_mode = false;
 
+        const float MIN_OXYGEN = 0.001f;
+        const float MAX_OXYGEN = 0.99f;
+
         /*
          * Graph-based grid locality code transplanted from BARABAS.
          */
@@ -585,7 +588,7 @@ namespace SpaceEngineers
                             {
                                 depressurize(vents);
 
-                                if (curOxygenLevel(vents) < 0.01)
+                                if (curOxygenLevel(vents) < MIN_OXYGEN)
                                 {
                                     pressureSet = true;
                                 }
@@ -594,7 +597,7 @@ namespace SpaceEngineers
                             {
                                 pressurize(vents);
 
-                                if (curOxygenLevel(vents) > 0.9)
+                                if (curOxygenLevel(vents) > MAX_OXYGEN)
                                 {
                                     pressureSet = true;
                                 }
@@ -697,11 +700,11 @@ namespace SpaceEngineers
                             // wait until the room is fully pressurized/depressurized
                             bool pressureSet = false;
                             bool stuck = false;
-                            if (sensor_idx == outer_sensor_idx && curOxygenLevel(vents) < 0.01)
+                            if (sensor_idx == outer_sensor_idx && curOxygenLevel(vents) < MIN_OXYGEN)
                             {
                                 pressureSet = true;
                             }
-                            else if (sensor_idx != outer_sensor_idx && curOxygenLevel(vents) > 0.9)
+                            else if (sensor_idx != outer_sensor_idx && curOxygenLevel(vents) > MAX_OXYGEN)
                             {
                                 pressureSet = true;
                             }
@@ -1042,7 +1045,7 @@ namespace SpaceEngineers
 
                             depressurize(vents);
 
-                            if (curOxygenLevel(vents) < 0.01)
+                            if (curOxygenLevel(vents) < MIN_OXYGEN)
                             {
                                 pressureSet = true;
                             }
@@ -1144,7 +1147,7 @@ namespace SpaceEngineers
                             // wait until the room is fully pressurized
                             bool pressureSet = false;
                             bool stuck = false;
-                            if (curOxygenLevel(vents) > 0.9)
+                            if (curOxygenLevel(vents) > MAX_OXYGEN)
                             {
                                 pressureSet = true;
                             }
