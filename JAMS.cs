@@ -24,15 +24,15 @@ namespace SpaceEngineers
 #endif
 #endregion
         /*
-         * JAMS v1.12
+         * JAMS v1.13
          *
          * (JAMS Airlock Management System)
          *
          * Published under "do whatever you want with it" license (aka public domain).
          *
          */
-
-        const string VERSION = "1.12";
+         
+        const string VERSION = "1.13";
 
         public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
         public List<JAMS_Group> airlocks = new List<JAMS_Group>();
@@ -42,7 +42,12 @@ namespace SpaceEngineers
         Action[] states = null;
 
         int current_state;
+        
+        bool timer_mode = false;
 
+        const float MIN_OXYGEN = 0.001f;
+        const float MAX_OXYGEN = 0.99f;
+        
         /*
          * Graph-based grid locality code transplanted from BARABAS.
          */
@@ -551,7 +556,7 @@ namespace SpaceEngineers
             {
                 close(doors[0]);
                 close(doors[1]);
-                pressurize(vents);
+                depressurize(vents);
                 turnOffLights(lights);
                 sensor_idx = -1;
                 last_pressure = -1;
@@ -560,11 +565,24 @@ namespace SpaceEngineers
 
             protected override bool advanceStateImpl()
             {
-                // timeout
+                // timeout - force reset
                 if (elapsed.Seconds > 10)
                 {
+                    bool has_open_doors = false;
                     setColor(lights, Color.Red);
-                    is_finished = true;
+                    foreach (var door in doors)
+                    {
+                        if (door.OpenRatio != 0)
+                        {
+                            has_open_doors = true;
+                            close(door);
+                        }
+                    }
+                    if (!has_open_doors)
+                    {
+                        is_finished = true;
+                        reset();
+                    }
                     goto False;
                 }
 
@@ -582,8 +600,8 @@ namespace SpaceEngineers
                             if (sensor_idx == outer_sensor_idx || outer_sensor_idx == -1)
                             {
                                 depressurize(vents);
-
-                                if (curOxygenLevel(vents) < 0.01)
+                                
+                                if (curOxygenLevel(vents) < MIN_OXYGEN)
                                 {
                                     pressureSet = true;
                                 }
@@ -592,7 +610,7 @@ namespace SpaceEngineers
                             {
                                 pressurize(vents);
 
-                                if (curOxygenLevel(vents) > 0.9)
+                                if (curOxygenLevel(vents) > MAX_OXYGEN)
                                 {
                                     pressureSet = true;
                                 }
@@ -600,8 +618,7 @@ namespace SpaceEngineers
 
                             // if the vent is already (de)pressurizing, wait until it's fully
                             // (de)pressurized, or just go to next stage if it's stuck
-                            stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                            stuck = (elapsed.Seconds > 5 && Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -695,16 +712,15 @@ namespace SpaceEngineers
                             // wait until the room is fully pressurized/depressurized
                             bool pressureSet = false;
                             bool stuck = false;
-                            if (sensor_idx == outer_sensor_idx && curOxygenLevel(vents) < 0.01)
+                            if (sensor_idx == outer_sensor_idx && curOxygenLevel(vents) < MIN_OXYGEN)
                             {
                                 pressureSet = true;
                             }
-                            else if (sensor_idx != outer_sensor_idx && curOxygenLevel(vents) > 0.9)
+                            else if (sensor_idx != outer_sensor_idx && curOxygenLevel(vents) > MAX_OXYGEN)
                             {
                                 pressureSet = true;
                             }
-                            stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                            stuck = (elapsed.Seconds > 5 && Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 var door_idx = sensor_to_door_idx[sensor_idx];
@@ -1039,16 +1055,15 @@ namespace SpaceEngineers
                             }
 
                             depressurize(vents);
-
-                            if (curOxygenLevel(vents) < 0.01)
+                            
+                            if (curOxygenLevel(vents) < MIN_OXYGEN)
                             {
                                 pressureSet = true;
                             }
 
                             // if the vent is already depressurizing, wait until it's fully
                             // depressurized, or just go to next stage if it's stuck
-                            stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                            stuck = (elapsed.Seconds > 15 && Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -1142,12 +1157,11 @@ namespace SpaceEngineers
                             // wait until the room is fully pressurized
                             bool pressureSet = false;
                             bool stuck = false;
-                            if (curOxygenLevel(vents) > 0.9)
+                            if (curOxygenLevel(vents) > MAX_OXYGEN)
                             {
                                 pressureSet = true;
                             }
-                            stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < 0.05);
+                            stuck = (elapsed.Seconds > 15 && Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
                             if (pressureSet || stuck)
                             {
                                 if (stuck)
@@ -1712,20 +1726,33 @@ namespace SpaceEngineers
 
         void s_checkAirlocks()
         {
+            int n_active = 0;
             foreach (var airlock in airlocks)
             {
                 if (active_airlocks.Contains(airlock))
                 {
+                    n_active++;
                     continue;
                 }
                 if (airlock.tryActivate())
                 {
+                    n_active++;
                     active_airlocks.Add(airlock);
                 }
                 else
                 {
                     airlock.reset();
                 }
+            }
+            // if we're in timer mode, don't change UpdateFrequency
+            if (timer_mode)
+                return;
+            if (n_active > 0)
+            {
+                Runtime.UpdateFrequency = UpdateFrequency.Update10;
+            } else
+            {
+                Runtime.UpdateFrequency = UpdateFrequency.Update100;
             }
         }
 
@@ -1790,8 +1817,8 @@ namespace SpaceEngineers
             // advance current state and store IL count values
             current_state = next_state;
             cycle_count = cur_i;
-
-            return hasHeadroom;
+            
+            return hasHeadroom && next_state != 0;
         }
 
         void ILReport(int states_executed)
@@ -1811,6 +1838,7 @@ namespace SpaceEngineers
 
         public Program()
         {
+            Runtime.UpdateFrequency = UpdateFrequency.Once;
             states = new Action[] {
               s_refreshGrids,
               s_refreshAirlocks,
@@ -1829,12 +1857,25 @@ namespace SpaceEngineers
             current_state = 2;
             state_cycle_counts = new int[states.Length];
         }
-
-        void Main()
+        
+        void Main(string arg, UpdateType ut)
         {
             Echo(String.Format("JAMS version {0}", VERSION));
             int num_states = 0;
             cycle_count = 0;
+
+            // if we're activated by a timer, go into timer mode and do not ever
+            // update the UpdateFrequency
+            if (ut == UpdateType.Trigger)
+            {
+                timer_mode = true;
+                Runtime.UpdateFrequency = UpdateFrequency.None;
+            }
+            else {
+                timer_mode = false;
+                Runtime.UpdateFrequency = UpdateFrequency.Update100;
+            }
+
             validateAirlocks();
             do
             {
