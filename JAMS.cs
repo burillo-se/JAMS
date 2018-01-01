@@ -1842,7 +1842,7 @@ namespace SpaceEngineers
 
         public Program()
         {
-            Runtime.UpdateFrequency = UpdateFrequency.Update100;
+            Runtime.UpdateFrequency = UpdateFrequency.Once;
             states = new Action[] {
               s_refreshGrids,
               s_refreshAirlocks,
