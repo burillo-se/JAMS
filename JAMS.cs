@@ -324,6 +324,383 @@ namespace SpaceEngineers
             }
         }
 
+        public class JAMS_Simple_Airlock : JAMS_Group
+        {
+            public override bool isValid()
+            {
+                // simple double airlock has no vents
+                if (doors.Count != 2)
+                {
+                    return false;
+                }
+                foreach (var door in doors)
+                {
+                    if (!blockExists(door) || slimBlock(door) == null)
+                    {
+                        return false;
+                    }
+                }
+                if (sensors.Count != 2)
+                {
+                    return false;
+                }
+                foreach (var sensor in sensors)
+                {
+                    if (!blockExists(sensor) || slimBlock(sensor) == null)
+                    {
+                        return false;
+                    }
+                }
+                // we do not depend on lights, so if they're dead, just remove them from the
+                // list and move on with our lives
+                for (int i = lights.Count - 1; i >= 0; i--)
+                {
+                    var light = lights[i];
+                    if (!blockExists(light) || slimBlock(light) == null)
+                    {
+                        lights.RemoveAt(i);
+                    }
+                }
+                return true;
+            }
+            public override string ToString()
+            {
+                return String.Format("Simple#{0}#{1}#{2}#{3}#{4}", name,
+                                     sensor_idx, (int)step_id,
+                                     is_finished, elapsed);
+            }
+            public override bool updateFromString(string s)
+            {
+                string[] strs = s.Split('#');
+                if (strs.Length != 6)
+                {
+                    return false;
+                }
+                if (strs[0] != "Simple")
+                {
+                    return false;
+                }
+                if (strs[1] != name)
+                {
+                    return false;
+                }
+                int tmp_sensor;
+                if (!Int32.TryParse(strs[3], out tmp_sensor) || tmp_sensor < -1 || tmp_sensor > 1)
+                {
+                    throw new Exception("Wrong sensor idx");
+                }
+                int tmp_state;
+                if (!Int32.TryParse(strs[4], out tmp_state) || tmp_state < 0 ||
+                    tmp_state > (int)State.STEP_DOOR_OVERRIDE)
+                {
+                    throw new Exception("Wrong state");
+                }
+                bool tmp_finished;
+                if (!Boolean.TryParse(strs[6], out tmp_finished))
+                {
+                    throw new Exception("Wrong finished");
+                }
+                TimeSpan tmp_elapsed;
+                if (!TimeSpan.TryParse(strs[7], out tmp_elapsed))
+                {
+                    throw new Exception("Wrong elapsed");
+                }
+                sensor_idx = tmp_sensor;
+                step_id = (State)tmp_state;
+                is_finished = tmp_finished;
+                elapsed = tmp_elapsed;
+                return true;
+            }
+            private void mapSensorsToDoors()
+            {
+                // figure out which sensor likely belongs to which door
+                int min_idx = -1;
+                double min_dist = 0;
+                var door = doors[0];
+                for (int i = 0; i < 2; i++)
+                {
+                    var d = Vector3D.Distance(door.GetPosition(), sensors[i].GetPosition());
+                    if (d < min_dist || min_idx == -1)
+                    {
+                        min_dist = d;
+                        min_idx = i;
+                    }
+                }
+                sensor_to_door_idx[min_idx] = 0;
+                sensor_to_door_idx[(min_idx + 1) % 2] = 1;
+            }
+
+            public JAMS_Simple_Airlock(Program p_in, string name_in, List<IMyDoor> doors_in,
+                                List<IMyLightingBlock> lights_in,
+                                List<IMySensorBlock> sensors_in)
+            {
+                // in the interest of saving cycles, constructor assumes the data is valid.
+                // if it isn't, it's your fault.
+                sensor_to_door_idx = new Dictionary<int, int>();
+                p = p_in;
+                name = name_in;
+                doors = doors_in;
+                sensors = sensors_in;
+                lights = lights_in;
+
+                mapSensorsToDoors();
+
+                reset();
+            }
+
+            public override void updateFromGroup(IMyBlockGroup g)
+            {
+                var tmp_doors = new List<IMyDoor>();
+                var tmp_sensors = new List<IMySensorBlock>();
+                var tmp_lights = new List<IMyLightingBlock>();
+
+                p.parseSimpleAirlock(g, tmp_doors, tmp_lights, tmp_sensors);
+
+                doors = tmp_doors;
+                lights = tmp_lights;
+                sensors = tmp_sensors;
+
+                mapSensorsToDoors();
+            }
+
+            public override bool finished()
+            {
+                return is_finished;
+            }
+
+            public override bool tryActivate()
+            {
+                // check if any doors are active
+                for (int d_idx = 0; d_idx < doors.Count; d_idx++)
+                {
+                    var door = doors[d_idx];
+                    if (door.Status == DoorStatus.Open || door.Status == DoorStatus.Opening)
+                    {
+                        // activate the override state
+                        elapsed = TimeSpan.Zero;
+                        step_id = State.STEP_DOOR_OVERRIDE;
+
+                        setColor(lights, Color.Yellow);
+                        is_finished = false;
+                        return true;
+                    }
+                }
+                for (int s_idx = 0; s_idx < sensors.Count; s_idx++)
+                {
+                    var sensor = sensors[s_idx];
+                    if (sensor.IsActive)
+                    {
+                        // activate the airlock
+                        elapsed = TimeSpan.Zero;
+                        step_id = State.STEP_INIT;
+                        sensor_idx = s_idx;
+
+                        setColor(lights, Color.Yellow);
+                        is_finished = false;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            public override void reset()
+            {
+                close(doors[0]);
+                close(doors[1]);
+                turnOffLights(lights);
+                sensor_idx = -1;
+                is_finished = true;
+            }
+
+            protected override bool advanceStateImpl()
+            {
+                // timeout - force reset
+                if (elapsed.Seconds > 10)
+                {
+                    bool has_open_doors = false;
+                    setColor(lights, Color.Red);
+                    foreach (var door in doors)
+                    {
+                        if (door.OpenRatio != 0)
+                        {
+                            has_open_doors = true;
+                            close(door);
+                        }
+                    }
+                    if (!has_open_doors)
+                    {
+                        is_finished = true;
+                        reset();
+                    }
+                    return false;
+                }
+
+                // decide what to do
+                switch (step_id)
+                {
+                    case State.STEP_INIT:
+                        {
+                            var sensor = sensors[sensor_idx];
+
+                            // if we're ready, open the door and proceed to next state
+                            if (sensor.IsActive)
+                            {
+                                var door_idx = sensor_to_door_idx[sensor_idx];
+                                var door = doors[door_idx];
+                                // make sure we do open the door
+                                open(door);
+                                nextState();
+                                setColor(lights, Color.Green);
+                                return true;
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_IN_WAIT:
+                        {
+                            // wait 1 second after sensor stops being active, then close the
+                            // door and start pressurizing/depressurizing
+
+                            var sensor = sensors[sensor_idx];
+                            var door_idx = sensor_to_door_idx[sensor_idx];
+                            var door = doors[door_idx];
+
+                            if (door.OpenRatio == 1 && !sensor.IsActive && elapsed.Seconds > 1)
+                            {
+                                close(door);
+                                nextState();
+                                return true;
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_IN:
+                        {
+                            var sensor = sensors[sensor_idx];
+                            var door_idx = sensor_to_door_idx[sensor_idx];
+                            var door = doors[door_idx];
+
+                            // close the door
+                            if (door.OpenRatio == 0)
+                            {
+                                // update sensor id
+                                sensor_idx = (sensor_idx + 1) % 2;
+                                nextState();
+
+                                setColor(lights, Color.Yellow);
+                                return true;
+                            }
+                            else
+                            {
+                                close(door);
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_OUT:
+                        {
+                            var door_idx = sensor_to_door_idx[sensor_idx];
+                            var door = doors[door_idx];
+                            open(door);
+                            nextState();
+                            setColor(lights, Color.Green);
+
+                            return true;
+                        }
+                    case State.STEP_DOOR_OUT_WAIT:
+                        {
+                            var door_idx = sensor_to_door_idx[sensor_idx];
+                            var door = doors[door_idx];
+                            var sensor = sensors[sensor_idx];
+
+                            if (door.OpenRatio == 1 || sensor.IsActive)
+                            {
+                                nextState();
+                                return true;
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_CLOSE_WAIT:
+                        {
+                            var sensor = sensors[sensor_idx];
+                            if (!sensor.IsActive && elapsed.Seconds > 1)
+                            {
+                                nextState();
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_CLOSE:
+                        {
+                            var door_idx = sensor_to_door_idx[sensor_idx];
+                            var door = doors[door_idx];
+
+                            if (door.OpenRatio != 0)
+                            {
+                                setColor(lights, Color.Green);
+                                close(door);
+                            }
+                            else
+                            {
+                                is_finished = true;
+                            }
+                            return false;
+                        }
+                    case State.STEP_DOOR_OVERRIDE:
+                        {
+                            // find the open door
+                            bool hasOpenDoors = false;
+                            for (int door_idx = 0; door_idx < doors.Count; door_idx++)
+                            {
+                                var door = doors[door_idx];
+                                if (elapsed.Seconds > 2)
+                                {
+                                    if (door.OpenRatio != 0)
+                                    {
+                                        setColor(lights, Color.Green);
+                                        close(door);
+                                        hasOpenDoors = true;
+                                    }
+                                }
+                                else
+                                {
+                                    // don't die until we've tried to close the doors
+                                    hasOpenDoors = true;
+                                }
+                            }
+                            if (!hasOpenDoors)
+                            {
+                                is_finished = true;
+                            }
+                            return false;
+                        }
+                }
+                return true;
+            }
+
+            private void nextState()
+            {
+                step_id++;
+                elapsed = TimeSpan.Zero;
+            }
+
+            enum State
+            {
+                STEP_INIT,
+                STEP_DOOR_IN_WAIT,
+                STEP_DOOR_IN,
+                STEP_DOOR_OUT,
+                STEP_DOOR_OUT_WAIT,
+                STEP_DOOR_CLOSE_WAIT,
+                STEP_DOOR_CLOSE,
+                STEP_DOOR_OVERRIDE
+            };
+
+            private List<IMyDoor> doors;
+            private List<IMySensorBlock> sensors;
+            private List<IMyLightingBlock> lights;
+            private Dictionary<int, int> sensor_to_door_idx; // maps sensor idx to door idx
+            private State step_id;
+            private int sensor_idx;
+            private bool is_finished;
+        }
+
         public class JAMS_Double_Airlock : JAMS_Group
         {
             public override bool isValid()
@@ -1278,6 +1655,26 @@ namespace SpaceEngineers
             }
         }
 
+        public void parseSimpleAirlock(IMyBlockGroup g,
+                                       List<IMyDoor> doors, List<IMyLightingBlock> lights,
+                                       List<IMySensorBlock> sensors)
+        {
+            var vents = new List<IMyAirVent>();
+            parseAirlock(g, vents, doors, lights, sensors);
+            if (vents.Count != 0)
+            {
+                throw new Exception("Need to have no vents");
+            }
+            if (doors.Count != 2)
+            {
+                throw new Exception("Need to have two doors");
+            }
+            if (sensors.Count != 2)
+            {
+                throw new Exception("Need to have two sensors");
+            }
+        }
+
         public void parseSingleAirlock(IMyBlockGroup g, List<IMyAirVent> vents,
                                        List<IMyDoor> doors, List<IMyLightingBlock> lights,
                                        List<IMySensorBlock> sensors)
@@ -1307,6 +1704,15 @@ namespace SpaceEngineers
             return new JAMS_Double_Airlock(p, g.Name, vents, doors, lights, sensors);
         }
 
+        public JAMS_Group createSimpleFromGroup(IMyBlockGroup g, Program p)
+        {
+            var doors = new List<IMyDoor>();
+            var lights = new List<IMyLightingBlock>();
+            var sensors = new List<IMySensorBlock>();
+            parseSimpleAirlock(g, doors, lights, sensors);
+            return new JAMS_Simple_Airlock(p, g.Name, doors, lights, sensors);
+        }
+
         public JAMS_Group createSingleFromGroup(IMyBlockGroup g, Program p)
         {
             var vents = new List<IMyAirVent>();
@@ -1329,6 +1735,13 @@ namespace SpaceEngineers
             try
             {
                 return createSingleFromGroup(g, this);
+            }
+            catch (Exception)
+            {
+            }
+            try
+            {
+                return createSimpleFromGroup(g, this);
             }
             catch (Exception)
             {
