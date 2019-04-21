@@ -938,8 +938,8 @@ namespace SpaceEngineers
 
             protected override bool advanceStateImpl()
             {
-                // timeout - force reset
-                if (elapsed.Seconds > 10)
+                // timeout - force reset, but avoid resetting on init step
+                if (elapsed.Seconds > 10 && step_id != State.STEP_INIT)
                 {
                     bool has_open_doors = false;
                     setColor(lights, Color.Red);
