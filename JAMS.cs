@@ -1825,14 +1825,17 @@ namespace SpaceEngineers
             return hasHeadroom && next_state != 0;
         }
 
-        void ILReport(int states_executed)
+        string ILReport(int states_executed)
         {
-            string il_str = String.Format("IL Count: {0}/{1} ({2:0.0}%)",
+            var sb = new StringBuilder();
+            sb.AppendFormat("IL Count: {0}/{1} ({2:0.0}%)",
                Runtime.CurrentInstructionCount,
                Runtime.MaxInstructionCount,
                (Decimal)Runtime.CurrentInstructionCount / Runtime.MaxInstructionCount * 100M);
-            Echo(String.Format("States executed: {0}", states_executed));
-            Echo(il_str);
+            sb.AppendLine();
+            sb.AppendFormat("States executed: {0}", states_executed);
+            sb.AppendLine();
+            return sb.ToString();
         }
 
         public void Save()
@@ -1864,7 +1867,9 @@ namespace SpaceEngineers
 
         void Main(string arg, UpdateType ut)
         {
-            Echo(String.Format("JAMS version {0}", VERSION));
+            var sb = new StringBuilder();
+            sb.AppendFormat("JAMS version {0}", VERSION);
+            sb.AppendLine();
             int num_states = 0;
             cycle_count = 0;
 
@@ -1896,9 +1901,16 @@ namespace SpaceEngineers
                 }
                 num_states++;
             } while (canContinue() && num_states < states.Length);
+            sb.AppendFormat("Airlocks count: {0}", airlocks.Count);
+            sb.AppendLine();
+            sb.Append(ILReport(num_states));
 
-            Echo(String.Format("Airlocks count: {0}", airlocks.Count));
-            ILReport(num_states);
+            Echo(sb.ToString());
+
+            // also write it out on the screen
+            var surface = Me.GetSurface(0);
+            surface.ContentType = VRage.Game.GUI.TextPanel.ContentType.TEXT_AND_IMAGE;
+            surface.WriteText(sb.ToString());
         }
 #region SEFOOTER
 #if DEBUG
