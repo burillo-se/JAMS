@@ -40,6 +40,9 @@ namespace SpaceEngineers
 
         const float MIN_OXYGEN = 0.001f;
         const float MAX_OXYGEN = 0.99f;
+        // if (de)pressurization has changed less than 1%
+        // since last time we checked, time to get unstuck
+        const float STUCK_THRESH = 0.01f;
 
         /*
          * Graph-based grid locality code transplanted from BARABAS.
@@ -989,7 +992,7 @@ namespace SpaceEngineers
                             // if the vent is already (de)pressurizing, wait until it's fully
                             // (de)pressurized, or just go to next stage if it's stuck
                             stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < STUCK_THRESH);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -1092,7 +1095,7 @@ namespace SpaceEngineers
                                 pressureSet = true;
                             }
                             stuck = (elapsed.Seconds > 5 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MIN_OXYGEN);
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < STUCK_THRESH);
                             if (pressureSet || stuck)
                             {
                                 var door_idx = sensor_to_door_idx[sensor_idx];
@@ -1435,8 +1438,8 @@ namespace SpaceEngineers
 
                             // if the vent is already depressurizing, wait until it's fully
                             // depressurized, or just go to next stage if it's stuck
-                            stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
+                            stuck = (elapsed.Seconds > 5 &&
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < STUCK_THRESH);
                             if (pressureSet || stuck)
                             {
                                 ready = true;
@@ -1534,8 +1537,8 @@ namespace SpaceEngineers
                             {
                                 pressureSet = true;
                             }
-                            stuck = (elapsed.Seconds > 15 &&
-                              Math.Abs(curOxygenLevel(vents) - last_pressure) < MAX_OXYGEN);
+                            stuck = (elapsed.Seconds > 10 &&
+                              Math.Abs(curOxygenLevel(vents) - last_pressure) < STUCK_THRESH);
                             if (pressureSet || stuck)
                             {
                                 if (stuck)
