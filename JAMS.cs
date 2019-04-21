@@ -2234,6 +2234,47 @@ namespace SpaceEngineers
             return hasHeadroom && next_state != 0;
         }
 
+        string AirlockReport()
+        {
+            int simple = 0, single = 0, @double = 0, error = 0;
+
+            foreach (var a in airlocks)
+            {
+                if (a is JAMS_Simple_Airlock)
+                    simple++;
+                else if (a is JAMS_Single_Airlock)
+                    single++;
+                else if (a is JAMS_Double_Airlock)
+                    @double++;
+                else
+                    error++;
+            }
+            var sb = new StringBuilder();
+            sb.AppendFormat("Total airlocks: {0}", airlocks.Count);
+            sb.AppendLine();
+            if (simple > 0)
+            {
+                sb.AppendFormat("Vent-less airlocks: {0}", simple);
+                sb.AppendLine();
+            }
+            if (single > 0)
+            {
+                sb.AppendFormat("Hangar-style airlocks: {0}", single);
+                sb.AppendLine();
+            }
+            if (@double > 0)
+            {
+                sb.AppendFormat("Chamber-style airlocks: {0}", @double);
+                sb.AppendLine();
+            }
+            if (error > 0)
+            {
+                sb.AppendFormat("Errors: {0}", error);
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
+
         string ILReport(int states_executed)
         {
             var sb = new StringBuilder();
@@ -2310,8 +2351,7 @@ namespace SpaceEngineers
                 }
                 num_states++;
             } while (canContinue() && num_states < states.Length);
-            sb.AppendFormat("Airlocks count: {0}", airlocks.Count);
-            sb.AppendLine();
+            sb.Append(AirlockReport());
             sb.Append(ILReport(num_states));
 
             Echo(sb.ToString());
