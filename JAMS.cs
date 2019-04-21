@@ -17,14 +17,14 @@ namespace SpaceEngineers
 #endif
 #endregion
         /*
-         * JAMS v1.2-pre0
+         * JAMS v1.2
          *
          * (JAMS Airlock Management System)
          *
          * Published under "do whatever you want with it" license (aka public domain).
          *
          */
-        const string VERSION = "1.2-pre0";
+        const string VERSION = "1.2";
 
         public List<JAMS_Group> active_airlocks = new List<JAMS_Group>();
         public List<JAMS_Group> airlocks = new List<JAMS_Group>();
